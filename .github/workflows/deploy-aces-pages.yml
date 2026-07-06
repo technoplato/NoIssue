@@ -45,18 +45,21 @@ jobs:
         run: cd aces && npm test
 
   deploy:
-    # NOTE: no `environment:` block on purpose.
-    # The repo's auto-created github-pages
-    # environment carries a deployment-branch
-    # policy (main only, from the old Jekyll
-    # setup) that instantly rejects jobs from
-    # this branch. Without the block the job
-    # runs; deploy-pages still targets Pages.
-    # If Pages' API also enforces the policy,
-    # fix in Settings -> Environments ->
-    # github-pages -> add this branch.
+    # STATUS (verified empirically, runs 1+2):
+    # the Pages API REQUIRES this environment
+    # block, and the auto-created github-pages
+    # environment only allows deploys from
+    # main (legacy Jekyll policy). So from this
+    # branch the deploy job is blocked until
+    # EITHER (a) Settings -> Environments ->
+    # github-pages -> Deployment branches ->
+    # add claude/* — or (b) this workflow
+    # lands on main. Tests still gate + run.
     needs: test
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: assemble site

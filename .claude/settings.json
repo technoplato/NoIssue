@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null || exit 0; git fetch origin claude/aces-coordination -q 2>/dev/null; f=$(git ls-tree --name-only origin/claude/aces-coordination mailbox/ 2>/dev/null | sort | tail -2); [ -n \"$f\" ] && { echo '== ACES agent mailbox (newest 2; branch claude/aces-coordination; read PROTOCOL.md there before working) =='; for m in $f; do echo \"-- $m --\"; git show \"origin/claude/aces-coordination:$m\" 2>/dev/null; done; } || true"
+          }
+        ]
+      }
+    ]
+  }
+}

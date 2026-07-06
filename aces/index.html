@@ -133,6 +133,7 @@
   <h1>ACES ARCADE</h1>
   <span class="chip" id="ver">v…</span>
   <span class="chip" id="planet">…</span>
+  <span class="chip" id="voice">voice …</span>
 </header>
 <nav id="tabs" role="tablist"></nav>
 <main>
@@ -198,7 +199,7 @@ async function boot() {
   const mods = ['core', 'calculator', 'ui',
     'store', 'store-ui', 'platform',
     'version', 'view', 'parse', 'nav',
-    'ledger'];
+    'ledger', 'llm', 'assistant'];
   // standalone builds (deploy/build-artifact
   // .js) inline the sources + package.json;
   // the hosted site fetches its own files.
@@ -534,7 +535,65 @@ async function boot() {
   $('back').onclick = () =>
     nav.dispatch({ type: 'BACK' });
 
+  /* -- the voice assistant ------------------
+   * Senses (llm.js) are the dependency that
+   * causes the side effects: on-device
+   * Gemini Nano (Chrome Prompt API) + Web
+   * Speech here; a CLI swaps the bag and the
+   * archetype never notices. No LLM on this
+   * planet? OfferDeclined lands on the tape
+   * as a fact and nobody is nagged.
+   */
+  const A = req('assistant');
+  const senses =
+    req('llm').browserSenses(window);
+  const RTS = { calc, store, nav, ledger };
+  const world = {
+    offerText: 'Talk to the arcade with ' +
+      'your voice? Uses the on-device ' +
+      'model; nothing leaves the page.',
+    describe: () => [
+      'You drive an event-sourced arcade.',
+      'Answer ONLY strict JSON:',
+      '{"target":t,"actions":[...]}',
+      'targets and their actions:',
+      'calc: {"type":"KEY","key":k} where',
+      '  k in 0-9 . + - * / ^ ( ) = C <',
+      '  display now: ' +
+        calc.getState().display,
+      'store: {"type":"AddToCart","sku":s}|',
+      ' {"type":"RemoveFromCart","sku":s}|',
+      ' {"type":"Checkout"} sku in APL MLK',
+      ' EGG BRD',
+      'nav: {"type":"NAVIGATE","to":x} x in '
+        + navMod.SCREENS.join(' '),
+      'ledger: {"type":"Transfer","from":a,',
+      ' "to":b,"amount":n} accounts: ' +
+        Object.keys(ledger.getState()
+          .accounts).join(' '),
+    ].join('\n'),
+    perform: async plan => {
+      const rt = RTS[plan.target];
+      for (const act of plan.actions)
+        await rt.dispatch(act);
+    },
+  };
+  const assistant = createRuntime(
+    versioned(A.createAssistant(
+      { targets: Object.keys(RTS) }),
+      schema),
+    { processors: A.processorsFor(
+        senses, world),
+      nodeId: 'web' });
+  assistant.subscribe(m => {
+    if (m.t === 'event')
+      tapeLine('voice', m.e);
+    $('voice').textContent = 'voice ' +
+      assistant.getState().phase;
+  });
+
   mount(); render(); fromHash();
+  assistant.dispatch({ type: 'MOUNT' });
 }
 
 boot().catch(e => {

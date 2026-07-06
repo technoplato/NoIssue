@@ -23,7 +23,7 @@ const ROOT = path.join(__dirname, '..');
 const MODS = ['core', 'calculator', 'ui',
   'store', 'store-ui', 'platform',
   'version', 'view', 'parse', 'nav',
-  'ledger'];
+  'ledger', 'llm', 'assistant'];
 
 const src = {};
 for (const n of MODS)

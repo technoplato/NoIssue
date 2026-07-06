@@ -9,8 +9,9 @@ aces_test() {
   aces_say "running proofs"
   have node || aces_die "node not found"
   cd "$DIR"
-  node test.js
-  node test-net.js
-  node test-conv.js
+  # naming: <thing>.test.js (2026-07-06).
+  # npm test runs the full chain from
+  # package.json — one source of truth.
+  npm test
   aces_ok "all proofs passed"
 }
