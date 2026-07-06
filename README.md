@@ -21,17 +21,38 @@ around them.
 ## Live
 
 **https://technoplato.github.io/NoIssue/aces/**
-— the arcade: calculator + corner store
-running the very modules in [`aces/`](aces/)
-unbundled (view-source is the program), with
-a live event tape and a drop-state-and-replay
-button.
+— the arcade: calculator + corner store + token
+ledger + settings, running the very modules in
+[`aces/`](aces/) unbundled (view-source is the
+program), with a live event tape and a
+drop-state-and-replay button.
+
+## What's live, what isn't
+
+Honest status — the full breakdown, with the
+"why", is in [`SUMMARY.md`](SUMMARY.md).
+
+| Thing | Access | Live? |
+|---|---|---|
+| The arcade (UI) | [technoplato.github.io/NoIssue/aces/](https://technoplato.github.io/NoIssue/aces/) | ✅ once merged to `main` |
+| Root landing page | [technoplato.github.io/NoIssue/](https://technoplato.github.io/NoIssue/) | ✅ yes |
+| Standalone build | [`aces/deploy/aces-arcade-standalone.html`](aces/deploy/aces-arcade-standalone.html) | ✅ open from `file://` |
+| Engine + all archetypes | `cd aces && npm test` (109 checks) | ✅ yes |
+| Token ledger | arcade → LEDGER | ⚠️ in-memory only |
+| Voice assistant | arcade → voice chip | ⚠️ needs on-device LLM; else `off` |
+| InstantDB sync | `aces/sync.js` | ⚠️ adapter ready, **not wired live** |
+| Pear / Holepunch P2P | `aces/pear.js` | ❌ shape only |
+| Real payments (Stripe/Solana/x402) | — | ❌ none yet |
+| Solana contract | [`aces/ledger.solana.md`](aces/ledger.solana.md) | ❌ designed, not written |
 
 ## Layout
 
 - [`aces/`](aces/) — engine, archetypes,
   tests (`cd aces && npm test`), SPEC and
   roadmap (`NEXT.md`).
+- [`SUMMARY.md`](SUMMARY.md) — dated state of
+  the project; [`AGENTS.md`](AGENTS.md) — how
+  agents coordinate + house rules.
 - `claude/aces-coordination` branch — the
   append-only mailbox two AI agents use to
   split this work without colliding
