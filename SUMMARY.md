@@ -64,8 +64,9 @@ and its confirmation re-enters the ledger as a
 
 Everything lives under [`aces/`](aces/) and runs
 on plain Node with no dependencies:
-`cd aces && npm test` → **109 checks green**
-across 10 suites.
+`cd aces && npm test` → **119 checks green**;
+`npm run test:pear` adds 4 more (real hypercore
+replication, after `npm install`).
 
 ---
 
@@ -86,7 +87,7 @@ across 10 suites.
 | **InstantDB sync** | live cloud sync adapter | ⚠️ **Adapter ready, NOT wired live** | see below |
 | **Pear / Holepunch P2P** | peer-to-peer sync | ⚠️ **Real hypercore replication proven; DHT discovery needs a UDP host** | `aces/pear.live.js` |
 | **Stripe payments** | buy game tokens | ⚠️ **Integration built + tested with doubles; needs a live key + server** | `aces/pay.js`, `aces/pay.stripe.md` |
-| **Solana contract** | on-chain ledger | ❌ **Designed, not written** | `aces/ledger.solana.md` |
+| **Solana program** | on-chain ledger (crypto rail) | ⚠️ **Written + canonical Anchor test; runs on a toolchain host, not this sandbox** | `aces/solana/` |
 
 Legend: ✅ works & proven · 🟡 in progress ·
 ⚠️ partial / caveated · ❌ not yet.
@@ -145,50 +146,60 @@ computes the $14.28 Shopify seed → 142,800 tokens.
 Solana and x402 rails are not connected.
 
 **Is the Solana contract ready?**
-No. There is a complete **design document**
-([`aces/ledger.solana.md`](aces/ledger.solana.md))
-mapping the JS ledger onto an Anchor program
-(PDA-per-account, PDA-per-ref for double-mint
-protection, `emit!` events, oracle-signed
-minting, a cluster/identity test matrix). No
-Rust has been written; this container has `cargo`
-but no `solana-cli`/`anchor-cli`, so it must be
-built and validator-tested in a session that has
-the toolchain.
+It is **written**, not yet **run on a chain**. The
+Anchor program is in
+[`aces/solana/programs/ledger/src/ledger.solana.rs`](aces/solana/programs/ledger/src/ledger.solana.rs)
+— the on-chain twin of `ledger.js`, instruction
+for instruction: a `Config` PDA (genesis + oracle),
+a `TokenAccount` PDA per wallet, and a `Ref` PDA
+per backing ref that is `init`-once, so a repeated
+Shopify order **cannot** double-mint (the runtime
+enforces it, not a check we could forget). The same
+fairness laws hold: oracle-only minting, no
+negatives, genesis-humility. A canonical Anchor
+**localnet** test
+([`aces/solana/tests/ledger.solana.test.ts`](aces/solana/tests/ledger.solana.test.ts))
+mirrors `ledger.test.js` scenario-for-scenario. The
+Solana + Anchor toolchain installed here (solana-cli
+4.0.2), but `cargo-build-sbf` downloads Solana
+platform-tools from GitHub at build time and this
+sandbox's TLS-intercepting egress proxy rejects that
+download — so it was not validator-run *here*. On any
+normal host, `cd aces/solana && anchor test` builds
+and runs it (see the Solana README). This is the
+**crypto payment rail**: wallets pay the program
+directly, so no custodial server is needed — the
+Stripe server is only for card/fiat users.
 
 ---
 
 ## Deployment
 
-**The arcade is not live yet, and the ACES work
-is deliberately kept OFF `main`** (Michael's
-call — do not merge to main without his explicit
-say-so). What that means concretely:
+The ACES work is now **merged to `main`** (Michael's
+go-ahead), which is what lets GitHub Pages publish.
 
-- **Root site** — `https://technoplato.github.io/NoIssue/`
-  — still the old Jekyll render of the hackathon
-  README; unchanged.
 - **The arcade** — `https://technoplato.github.io/NoIssue/aces/`
-  — **not deployed.** GitHub Pages' `github-pages`
-  environment only permits deploys from `main`, so
-  the deploy workflow cannot publish from the
-  feature branch. A brief merge-to-main was made
-  and then reverted (main is back at its prior
-  commit); the deploy never actually succeeded, so
-  nothing was ever served. Re-deploying is a
-  decision for Michael: either allow the feature
-  branch in the Pages environment settings, or
-  merge to main when he's ready.
-- **Offline / CSP'd hosts (works today)** — a
-  single self-contained file,
+  — deploys from `main` via
+  `.github/workflows/deploy-aces-pages.yml`, which
+  runs the full test suite (119 checks) as a gate,
+  then publishes. GitHub Pages' `github-pages`
+  environment only permits deploys from `main`
+  (a legacy branch policy), so main is exactly where
+  this needs to live to go live. If the deploy still
+  fails, the fix is Settings → Pages (set source to
+  "GitHub Actions") or Settings → Environments →
+  github-pages (allow the branch).
+- **Root site** — `https://technoplato.github.io/NoIssue/`
+  — the new landing page links to the arcade and to
+  the archived hackathon app.
+- **Offline / CSP'd hosts (works with zero deploy)**
+  — a single self-contained file,
   [`aces/deploy/aces-arcade-standalone.html`](aces/deploy/aces-arcade-standalone.html),
-  inlines every module (built by
-  `node aces/deploy/build-artifact.js`). Open it
-  from `file://` — no server, no deploy needed.
+  inlines every module. Open it from `file://`.
 
-The deploy workflow
-(`.github/workflows/deploy-aces-pages.yml`) runs
-the full test suite as a gate before publishing.
+Note: the Solana test is **not** run by CI — it needs
+the SBF toolchain, which the sandbox proxy blocks;
+build it on a normal host.
 
 ---
 

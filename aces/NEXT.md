@@ -1,6 +1,51 @@
-# NEXT — what we build next (captured 2026-07-06)
+# NEXT — roadmap (updated 2026-07-06)
 
-Ordered by dependency. Keep everything LOCAL for now (no live network).
+## Done so far ✅
+
+1. **Event versioning + SemVer** — `version.js` (9/9).
+2. **Platform declarative enum** — `platform.js` (20/20).
+3. **One view spec → ascii/React/RN** — `view.js` (11/11).
+4. **Nav + settings as folded state** — `nav.js`,
+   routes are a parser-printer `parse.js` (18+12).
+5. **Parser-printers** — `parse.js` (parse ↔ print laws).
+6. **Token ledger** — `ledger.js` (12/12), fairness laws.
+7. **Voice assistant** — `assistant.js` + `llm.js` (8/8),
+   senses (LLM/speech) modeled as dependencies.
+8. **Pear live** — `pear.live.js` (4/4): REAL hypercore
+   replication proven; DHT discovery needs a UDP host.
+9. **Stripe payments** — `pay.js` (10/10): a charge is a
+   side-effect behind a `pay` dependency; verified
+   webhooks mint via the ledger.
+10. **Solana program** — `solana/…/ledger.solana.rs` +
+    canonical Anchor localnet test; the on-chain twin of
+    `ledger.js`. Builds/runs on a normal toolchain host.
+11. **The arcade** — browser UI running the real engine
+    unbundled; standalone single-file build too.
+
+Total: **123 checks green** (119 core + 4 Pear).
+
+## Still to do
+
+- **Wire it all to live sync.** InstantDB adapter is
+  ready (`sync.js`) but not wired into a running host;
+  keep the admin token server-side. Pear needs a
+  UDP-capable box to discover peers.
+- **Payments go-live.** Provision a real Stripe key +
+  a tiny server + webhook (see `pay.stripe.md`), OR go
+  Solana-first and let wallets pay the program directly
+  (no server). x402/Cloudflare is a later fiat option —
+  VERIFY its docs before building.
+- **Deploy Solana** to devnet/mainnet from a host with
+  the toolchain (the sandbox proxy blocks the SBF
+  platform-tools download).
+- **Default mobile apps** (Notes, Reminders) with a
+  first-class cross-app **tag** entity — model tags
+  once, link many; build the shared schema FIRST.
+- The original detail for the remaining items follows.
+
+---
+
+## Original roadmap (for reference)
 
 ## 1. Event versioning + package.json-driven rule handlers
 Every event carries a `v` (schema version). The rules that fold a given

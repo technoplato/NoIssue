@@ -13,10 +13,22 @@ around them.
   left-fold. **The log is truth; state is a
   cache** you can drop and rebuild.
 - `react(state, event) -> effects[]` — asks
-  for I/O, never performs it. Effects run
-  behind injected processors, so the same
-  logic runs in a browser, on Node, or on a
-  server, unchanged.
+  for a side-effect, never performs it. A
+  **dependency** (an injected processor) does
+  the effect; its result re-enters as an event.
+  Swap the dependency and the same logic runs
+  in a browser, on Node, or on a server.
+
+## Branches (what's merged, what isn't)
+
+Updated 2026-07-06.
+
+| Branch | What it is | Merged to `main`? |
+|---|---|---|
+| `main` | releases; what GitHub Pages deploys | — |
+| `claude/aces-engine-architecture-pqbmyu` | all engine + archetype + arcade + Solana work | ✅ merged here |
+| `claude/human-ai-detection-game-9q4nnb` | first agent's original ACES work (engine, calculator, store, conversation) | ✅ (via the branch above) |
+| `claude/aces-coordination` | the agents' append-only mailbox (`PROTOCOL.md`) | ⛔ intentionally not merged — it's meta, not product |
 
 ## Live
 
@@ -34,16 +46,17 @@ Honest status — the full breakdown, with the
 
 | Thing | Access | Live? |
 |---|---|---|
-| The arcade (UI) | [technoplato.github.io/NoIssue/aces/](https://technoplato.github.io/NoIssue/aces/) | ✅ once merged to `main` |
+| The arcade (UI) | [technoplato.github.io/NoIssue/aces/](https://technoplato.github.io/NoIssue/aces/) | 🟡 deploys from `main` (this merge) |
 | Root landing page | [technoplato.github.io/NoIssue/](https://technoplato.github.io/NoIssue/) | ✅ yes |
 | Standalone build | [`aces/deploy/aces-arcade-standalone.html`](aces/deploy/aces-arcade-standalone.html) | ✅ open from `file://` |
-| Engine + all archetypes | `cd aces && npm test` (109 checks) | ✅ yes |
+| Engine + all archetypes | `cd aces && npm test` (119 checks) | ✅ yes |
 | Token ledger | arcade → LEDGER | ⚠️ in-memory only |
 | Voice assistant | arcade → voice chip | ⚠️ needs on-device LLM; else `off` |
 | InstantDB sync | `aces/sync.js` | ⚠️ adapter ready, **not wired live** |
 | Pear / Holepunch P2P | `aces/pear.live.js` | ⚠️ real hypercore replication proven; DHT needs a UDP host |
-| Stripe payments (buy tokens) | [`aces/pay.stripe.md`](aces/pay.stripe.md) | ⚠️ built + tested; needs a live key + server |
-| Solana / x402 rails | [`aces/ledger.solana.md`](aces/ledger.solana.md) | ❌ designed / not started |
+| Stripe payments (fiat) | [`aces/pay.stripe.md`](aces/pay.stripe.md) | ⚠️ built + tested; needs a live key + server |
+| Solana program (crypto) | [`aces/solana/`](aces/solana/) | ⚠️ written + tested; runs on a toolchain host |
+| x402 / Cloudflare rail | [`aces/ledger.solana.md`](aces/ledger.solana.md) | ❌ not started |
 
 ## Layout
 

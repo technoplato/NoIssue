@@ -1,0 +1,9 @@
+# build output, local validator ledger, deps
+target/
+.anchor/
+node_modules/
+test-ledger/
+*.log
+# the program keypair is a secret; contributors
+# run `anchor keys sync` to align declare_id.
+**/*-keypair.json
