@@ -32,6 +32,7 @@ const OP = {
 };
 
 // tokens -> RPN (shunting-yard) -> number.
+// RPN = Reverse Polish Notation.
 // This is where "3*4^2 = 48 not 144" is decided:
 // ^ outranks *, and ^ is right-assoc so
 // 2^3^2 = 2^(3^2). Returns {ok, value|error}.
@@ -172,6 +173,7 @@ const machine = {
 
   // REACT: a deliberate '=' asks the world to
   // speak the answer (an EFFECT, not a fact).
+  // TTS = Text To Speech (the 'speak' processor).
   react(state, ev) {
     if (ev.type === 'Evaluated')
       return [{ type: 'speak',

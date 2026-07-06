@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* ==============================================
  * CLI harness  —  thinnest GUI   (<=50 col house)
+ * CLI = Command-Line Interface.
  * Two verbs only: SEND ACTIONS, OBSERVE STATE.
  * The business logic never knows this exists.
  *
