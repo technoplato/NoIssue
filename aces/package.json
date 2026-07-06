@@ -1,0 +1,10 @@
+{
+  "name": "aces",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ACES event-sourced engine. This version field is the source of truth for the event schema (see version.js).",
+  "main": "core.js",
+  "scripts": {
+    "test": "node test.js && node test-net.js && node test-version.js"
+  }
+}
