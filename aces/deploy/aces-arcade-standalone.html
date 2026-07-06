@@ -1,0 +1,606 @@
+<!doctype html>
+<!-- ============================================
+  ACES ARCADE — the engine, in a browser.
+
+  There is NO build step and NO bundle. This
+  page fetches the very same CommonJS modules
+  that `node test.js` runs (core.js,
+  calculator.js, store.js, nav.js, ledger.js,
+  platform.js, parse.js, version.js ...) and
+  wires them with a tiny require() shim below.
+  The site serves its own source: view-source
+  is the real program.
+
+  Isomorphism, demonstrated:
+  - same decide/evolve/react as the CLI
+  - the 'speak' EFFECT runs on the browser's
+    TTS (Text To Speech) processor here — and
+    is GATED by the nav archetype's folded
+    sound setting.
+  - NAVIGATION IS STATE: the tab strip is the
+    nav archetype; the route table is a
+    parser-printer (parse.js). decide()
+    validates a destination by PARSING it;
+    react() PRINTS state into location.hash.
+    Deep links replay the same road inward.
+  - REPLAY drops state and refolds the log,
+    live, because state is only a cache.
+============================================= -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport"
+  content="width=device-width, initial-scale=1">
+<title>ACES Arcade</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --ink: #33ff66; --dim: #1a8c3c;
+    --bg: #050b07; --panel: #08130c;
+    --hot: #aaffc3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg);
+    color: var(--ink);
+    font-family: "SFMono-Regular", Menlo,
+      Consolas, monospace;
+    font-size: 15px; line-height: 1.35;
+  }
+  body.glyph-sm { font-size: 12px; }
+  body.glyph-lg { font-size: 19px; }
+  /* CRT scanlines */
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(0deg,
+        rgba(0,0,0,.16) 0 1px,
+        transparent 1px 3px);
+  }
+  header {
+    padding: 14px 18px 6px;
+    display: flex; gap: 12px;
+    align-items: baseline; flex-wrap: wrap;
+  }
+  h1 { margin: 0; font-size: 20px;
+    letter-spacing: 3px;
+    text-shadow: 0 0 8px var(--dim); }
+  .chip { color: var(--hot);
+    border: 1px solid var(--dim);
+    padding: 1px 8px; border-radius: 10px;
+    font-size: 12px; }
+  nav { padding: 6px 18px; display: flex;
+    gap: 8px; flex-wrap: wrap; }
+  nav button, .pad button, .act {
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--dim);
+    border-radius: 6px;
+    font: inherit; padding: 8px 14px;
+    min-height: 44px; cursor: pointer;
+  }
+  nav button[aria-selected="true"] {
+    color: var(--bg); background: var(--ink);
+    font-weight: 700;
+  }
+  main {
+    display: grid; gap: 16px;
+    grid-template-columns: minmax(0,1fr)
+      minmax(0,1fr);
+    padding: 12px 18px 40px;
+  }
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; }
+  }
+  section, aside {
+    background: var(--panel);
+    border: 1px solid var(--dim);
+    border-radius: 8px; padding: 14px;
+    min-width: 0;
+  }
+  pre {
+    margin: 0 0 12px; overflow-x: auto;
+    text-shadow: 0 0 6px rgba(51,255,102,.35);
+  }
+  .pad { display: grid; gap: 8px;
+    grid-template-columns: repeat(4, 1fr);
+    max-width: 340px; }
+  .pad button:active,
+  .act:active { background: var(--ink);
+    color: var(--bg); }
+  .acts { display: flex; gap: 8px;
+    flex-wrap: wrap; margin-top: 10px; }
+  aside h2, section h2 {
+    margin: 0 0 10px; font-size: 13px;
+    color: var(--hot); letter-spacing: 2px; }
+  #tape { max-height: 420px; overflow-y: auto;
+    font-size: 12px; color: var(--dim); }
+  #tape .v { color: var(--ink); }
+  #toast { position: fixed; left: 50%;
+    bottom: 24px; transform: translateX(-50%);
+    background: var(--ink); color: var(--bg);
+    padding: 10px 16px; border-radius: 8px;
+    opacity: 0; transition: opacity .3s;
+    max-width: 90vw; }
+  footer { padding: 0 18px 30px;
+    color: var(--dim); font-size: 12px; }
+  a { color: var(--hot); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ACES ARCADE</h1>
+  <span class="chip" id="ver">v…</span>
+  <span class="chip" id="planet">…</span>
+  <span class="chip" id="voice">voice …</span>
+</header>
+<nav id="tabs" role="tablist"></nav>
+<main>
+  <section>
+    <pre id="screen">booting…</pre>
+    <div id="controls"></div>
+  </section>
+  <aside>
+    <h2>EVENT TAPE — the log is truth</h2>
+    <div class="acts">
+      <button class="act" id="replay">
+        ⟲ drop state + replay log</button>
+      <button class="act" id="back">
+        ← back (a fact too)</button>
+    </div>
+    <pre id="tape"></pre>
+  </aside>
+</main>
+<footer>
+  Every keypress becomes a fact; state is a
+  fold of the tape; the address bar is printed
+  by the same parser that validates it.
+  Source (unbundled, this site serves it):
+  <a href="core.js">core.js</a> ·
+  <a href="parse.js">parse.js</a> ·
+  <a href="nav.js">nav.js</a> ·
+  <a href="ledger.js">ledger.js</a> ·
+  <a href="calculator.js">calculator.js</a> ·
+  <a href="store.js">store.js</a> ·
+  <a href="https://github.com/technoplato/NoIssue">repo</a>
+</footer>
+<div id="toast" role="status"></div>
+
+<script>window.__ACES_SRC__={"core":"/* ==============================================\n * A C E S  \u2014  core runtime      (<=50 col house)\n * Action Command Event Sideeffect State\n * ----------------------------------------------\n * World pushes ACTIONS in. A pure DECIDER turns\n * (state,action) into EVENTS (facts). A pure\n * EVOLVER folds each event into new STATE. A\n * pure REACTOR reads each event and asks for\n * EFFECTS (I/O). Effects run on their own\n * channel; what they learn returns as events.\n *\n * Nothing here touches net, disk, clock, screen.\n * That all lives behind EFFECT PROCESSORS. Swap\n * processors -> same logic runs client or server.\n *\n *   actions in                     effects out\n *       |                              ^\n *       v                              |\n *   DECIDE --events--> EVOLVE      REACT\n *   (s,a)->e[]         (s,e)->s     (s,e)->f[]\n *                         |            |\n *                     new state    PROCESSOR\n *                                  (tts,http..)\n *\n * The LOG is truth. State is a cache: a left\n * fold of evolve over every event. Drop state,\n * replay the log, you are exactly back.\n * ============================================ */\n\n'use strict';\n\n// machine = {\n//   initial,               starting state\n//   decide(s,a) -> e[]     action  -> events\n//   evolve(s,e) -> s       event   -> state\n//   react (s,e) -> f[]     event   -> effects\n//   resolve(s,uri) -> val  address -> value\n//   render(s)   -> string  state   -> ascii\n// }\n\nfunction createRuntime(machine, opts) {\n  opts = opts || {};\n  const procs = opts.processors || {};\n  const nodeId = opts.nodeId || 'n0';\n  const log = [];              // append-only facts\n  const seen = new Set();      // event ids we hold\n  let state = machine.initial;\n  const subs = new Set();\n  const react = machine.react || (() => []);\n  const now = opts.now || (() => Date.now());\n\n  // fold one event, notify, return its effects.\n  // an event carries identity (_id) and origin\n  // (_origin = the node that first decided it) so\n  // sync can dedup and avoid echo loops.\n  function commit(ev) {\n    const seq = log.length;\n    const e = {\n      ...ev, _seq: seq,\n      _at: ev._at || now(),\n      _id: ev._id || nodeId + ':' + seq,\n      _origin: ev._origin || nodeId,\n    };\n    log.push(e);\n    seen.add(e._id);\n    state = machine.evolve(state, e);\n    subs.forEach(fn => fn({ t: 'event', e, state }));\n    return react(state, e) || [];\n  }\n\n  // run an effect; feed its output back as events\n  async function runEffect(fx) {\n    const p = procs[fx.type];\n    if (!p) {                  // no processor here?\n      await pump([{ type: 'effect/unhandled', fx }]);\n      return;                  // honest: record it happened\n    }\n    subs.forEach(fn => fn({ t: 'effect', fx }));\n    const out = (await p(fx, api)) || [];\n    await pump(out);\n  }\n\n  // drive events, then chase the effects they spawn\n  async function pump(events) {\n    const fx = [];\n    for (const e of events) fx.push(...commit(e));\n    await Promise.all(fx.map(runEffect));\n  }\n\n  // the one public verb: push action, settle state\n  async function dispatch(action) {\n    await pump(machine.decide(state, action) || []);\n    return state;\n  }\n\n  function resolve(uri) {\n    if (!machine.resolve)\n      throw new Error('no resolver: ' + uri);\n    return machine.resolve(state, uri);\n  }\n\n  // ingest a fact decided ELSEWHERE (a remote\n  // node). No decide step \u2014 it already happened.\n  // Dedup by _id so replays and echoes are no-ops.\n  async function ingest(event) {\n    if (seen.has(event._id)) return state;\n    await pump([event]);\n    return state;\n  }\n\n  const getState = () => state;\n  const api = { dispatch, resolve, getState };\n\n  return {\n    dispatch, ingest, resolve, getState, nodeId,\n    getLog: () => log.slice(),\n    render: () => machine.render\n      ? machine.render(state)\n      : JSON.stringify(state, null, 2),\n    subscribe: fn => (subs.add(fn),\n      () => subs.delete(fn)),\n    // rebuild state from a log of facts alone\n    replay: events => {\n      state = machine.initial;\n      log.length = 0;\n      for (const e of events) {\n        log.push(e);\n        state = machine.evolve(state, e);\n      }\n      return state;\n    },\n  };\n}\n\nmodule.exports = { createRuntime };\n","calculator":"/* ==============================================\n * ARCHETYPE: calculator          (<=50 col house)\n * ----------------------------------------------\n * The TI-8x reduced to its form: a strip of\n * TOKENS folded from KEY facts, projected into a\n * DISPLAY that eagerly shows the expression AND\n * its live value when the expression parses.\n *\n * ACES here, and note: every letter is OWNED by\n * this archetype. A \"KEY\" makes no sense to a\n * store; \"AddToCart\" makes none here.\n *   ACTION  {type:'KEY', key}\n *   EVENT   KeyPressed|Backspaced|Cleared|\n *           Evaluated\n *   EFFECT  {type:'speak', text}\n *   STATE   {tokens, display, value, mode}\n *\n * Precedence is NOT a fold trick. evolve just\n * appends the key to tokens; the value is\n * re-derived each event by evaluate() below,\n * a shunting-yard pass (see notes there).\n * ============================================ */\n\n'use strict';\n\nconst DIG = new Set('0123456789'.split(''));\n// op -> [precedence, associativity]\nconst OP = {\n  '+': [2, 'L'], '-': [2, 'L'],\n  '*': [3, 'L'], '/': [3, 'L'],\n  '^': [4, 'R'],\n};\n\n// tokens -> RPN (shunting-yard) -> number.\n// RPN = Reverse Polish Notation.\n// This is where \"3*4^2 = 48 not 144\" is decided:\n// ^ outranks *, and ^ is right-assoc so\n// 2^3^2 = 2^(3^2). Returns {ok, value|error}.\nfunction evaluate(tokens) {\n  const out = [], st = [];\n  for (const t of tokens) {\n    if (t.kind === 'num') { out.push(t); continue; }\n    if (t.kind === 'op') {\n      const [p, a] = OP[t.text];\n      while (st.length) {\n        const top = st[st.length - 1];\n        if (top.kind !== 'op') break;\n        const [tp] = OP[top.text];\n        if (tp > p || (tp === p && a === 'L'))\n          out.push(st.pop());\n        else break;\n      }\n      st.push(t);\n    } else if (t.text === '(') st.push(t);\n    else if (t.text === ')') {\n      while (st.length &&\n             st[st.length - 1].text !== '(')\n        out.push(st.pop());\n      if (!st.length) return badParen();\n      st.pop();\n    }\n  }\n  while (st.length) {\n    const t = st.pop();\n    if (t.text === '(') return badParen();\n    out.push(t);\n  }\n  return evalRpn(out);\n}\nfunction badParen() {\n  return { ok: false, error: 'paren' };\n}\nfunction evalRpn(rpnTokens) {\n  const s = [];\n  for (const t of rpnTokens) {\n    if (t.kind === 'num') { s.push(t.value); continue; }\n    if (s.length < 2)\n      return { ok: false, error: 'partial' };\n    const b = s.pop(), a = s.pop();\n    s.push(apply(t.text, a, b));\n  }\n  if (s.length !== 1)\n    return { ok: false, error: 'partial' };\n  const v = s[0];\n  if (!Number.isFinite(v))\n    return { ok: false, error: 'math' };\n  return { ok: true, value: v };\n}\nfunction apply(op, a, b) {\n  if (op === '+') return a + b;\n  if (op === '-') return a - b;\n  if (op === '*') return a * b;\n  if (op === '/') return a / b;\n  return Math.pow(a, b);\n}\n\n// tokens -> canonical spaced expression string\nfunction stringify(tokens) {\n  if (!tokens.length) return '0';\n  return tokens.map(t => t.text).join(' ')\n    .replace(/\\( /g, '(').replace(/ \\)/g, ')');\n}\n\n// fold one key onto the token strip\nfunction pushKey(tokens, key) {\n  const last = tokens[tokens.length - 1];\n  if (DIG.has(key) || key === '.') {\n    if (last && last.kind === 'num') {\n      if (key === '.' && last.text.includes('.'))\n        return tokens;            // no 2nd dot\n      return withText(tokens, last.text + key);\n    }\n    const text = key === '.' ? '0.' : key;\n    return [...tokens, num(text)];\n  }\n  if (OP[key])\n    return [...tokens, { kind: 'op', text: key }];\n  if (key === '(' || key === ')')\n    return [...tokens, { kind: 'paren', text: key }];\n  return tokens;\n}\nfunction num(text) {\n  return { kind: 'num', text, value: parseFloat(text) };\n}\nfunction withText(tokens, text) {\n  return [...tokens.slice(0, -1), num(text)];\n}\nfunction trim(v) {\n  return String(Math.round(v * 1e10) / 1e10);\n}\n\nconst machine = {\n  initial: {\n    tokens: [], display: '0', value: null,\n    mode: 'basic',\n  },\n\n  // DECIDE: only place an action is judged worthy\n  // of becoming a fact.\n  decide(state, action) {\n    if (action.type !== 'KEY') return [];\n    const k = action.key;\n    if (k === 'C') return [{ type: 'Cleared' }];\n    if (k === '<')\n      return state.tokens.length\n        ? [{ type: 'Backspaced' }] : [];\n    if (k === '=')\n      return state.value == null\n        ? [] : [{ type: 'Evaluated', value: state.value }];\n    if (OP[k] && !state.tokens.length && k !== '-')\n      return [];               // op needs a lhs\n    return [{ type: 'KeyPressed', key: k }];\n  },\n\n  // EVOLVE: fold the fact, re-derive projection\n  evolve(state, ev) {\n    let tokens = state.tokens;\n    if (ev.type === 'KeyPressed')\n      tokens = pushKey(tokens, ev.key);\n    else if (ev.type === 'Backspaced')\n      tokens = backspace(tokens);\n    else if (ev.type === 'Cleared')\n      tokens = [];\n    else if (ev.type === 'Evaluated')\n      tokens = [num(trim(ev.value))];\n    const r = evaluate(tokens);\n    return {\n      ...state, tokens,\n      display: stringify(tokens),\n      value: r.ok ? r.value : null,\n    };\n  },\n\n  // REACT: a deliberate '=' asks the world to\n  // speak the answer (an EFFECT, not a fact).\n  // TTS = Text To Speech (the 'speak' processor).\n  react(state, ev) {\n    if (ev.type === 'Evaluated')\n      return [{ type: 'speak',\n        text: 'equals ' + trim(ev.value) }];\n    return [];\n  },\n\n  // RESOLVE: address any morsel of state.\n  // Local form:  calc://display\n  // Global form: aces://<user>/calc/<id>/display\n  //   (the World layer strips the prefix and\n  //    hands us just the field; see world.js)\n  resolve(state, uri) {\n    const f = uri\n      .replace(/^calc:\\/\\//, '')\n      .replace(/^.*\\/calc\\/[^/]+\\//, '');\n    if (f === 'display') return state.display;\n    if (f === 'value')   return state.value;\n    if (f === 'mode')    return state.mode;\n    if (f === 'tokens')  return state.tokens;\n    throw new Error('no such uri: ' + uri);\n  },\n\n  render(state) {\n    const { renderCalc } = require('./ui');\n    return renderCalc(state);\n  },\n};\n\nfunction backspace(tokens) {\n  const last = tokens[tokens.length - 1];\n  if (last && last.kind === 'num'\n      && last.text.length > 1)\n    return withText(tokens, last.text.slice(0, -1));\n  return tokens.slice(0, -1);\n}\n\nmodule.exports = { machine, evaluate };\n","ui":"/* ==============================================\n * UI  \u2014  ascii component kit      (<=50 col house)\n * ----------------------------------------------\n * Atomic design, no framework. Every component is\n * a PURE function  props -> string[] (lines).\n * Compose by stacking/joining lines.\n *\n *   atom      button, display, label\n *   molecule  keyRow      (a row of buttons)\n *   organism  keypad      (rows stacked)\n *   template  device      (frame around a screen)\n *   screen    renderCalc  (wires state -> device)\n *\n * NON-CAPTIVE note: nothing is \"clickable\" in a\n * pipe. So a button is a LABEL + the ACTION it\n * would emit. Rendering shows the label; the\n * harness \"clicks\" by dispatching that action.\n * The map is printed under the pad as a legend.\n * ============================================ */\n\n'use strict';\n\n// ---- atoms ----\nfunction button(label) {           // -> \"[ 7 ]\"\n  return '[ ' + String(label) + ' ]';\n}\nfunction display(text, width) {    // right-aligned\n  const s = String(text);\n  const body = s.length > width\n    ? '\u2026' + s.slice(-(width - 1))\n    : s.padStart(width);\n  return '|' + body + '|';\n}\n\n// ---- molecule ----\nfunction keyRow(keys) {            // -> one line\n  return ' ' + keys.map(button).join('');\n}\n\n// ---- organism ----\nfunction keypad(rows) {            // -> line[]\n  return rows.map(keyRow);\n}\n\n// ---- template ----\n// frames a screen body (line[]); auto-sizes to\n// the widest line so nothing ever spills out.\nfunction device(title, body) {\n  const bar = '[ ' + title + ' ]';\n  const all = body.concat([bar]);\n  const W = Math.max(...all.map(l => l.length)) + 1;\n  const top = '.' + '-'.repeat(W + 1) + '.';\n  const bot = \"'\" + '-'.repeat(W + 1) + \"'\";\n  const row = s => '| ' + padTo(s, W) + '|';\n  return [top, row(bar), row(''),\n          ...body.map(row), bot].join('\\n');\n}\nfunction padTo(s, w) {\n  return s.length >= w ? s\n    : s + ' '.repeat(w - s.length);\n}\n\n// ---- screen: calculator ----\nconst KEYS = [\n  ['7', '8', '9', '/'],\n  ['4', '5', '6', '*'],\n  ['1', '2', '3', '-'],\n  ['0', '.', '=', '+'],\n  ['(', ')', '^', 'C'],\n];\nfunction renderCalc(state) {\n  const W = 19;                    // display width\n  const live = state.value == null\n    ? '' : '= ' + trimNum(state.value);\n  const body = [\n    ' ' + display(state.display, W),\n    ' ' + display(live, W),\n    '',\n    ...keypad(KEYS),\n    '',\n    ' < back  = eval  C clear',\n  ];\n  return device(state.mode, body);\n}\nfunction trimNum(v) {\n  return String(Math.round(v * 1e10) / 1e10);\n}\n\nmodule.exports = {\n  button, display, keyRow, keypad, device,\n  renderCalc,\n};\n","store":"/* ==============================================\n * ARCHETYPE: store               (<=50 col house)\n * ----------------------------------------------\n * A tiny corner shop as an event fold. The CART\n * is a map sku->qty folded from cart facts. A\n * live PROJECTION recomputes count + total from\n * the catalog after every event. INVENTORY is\n * shelf stock; the cart may never reserve more\n * than exists, and CHECKOUT draws stock down.\n *\n * Every ACES letter is OWNED here. A \"KEY\" is a\n * category error; a store taps AddToCart.\n *   ACTION  AddToCart|RemoveFromCart|\n *           SetQty|Checkout\n *   EVENT   ItemAddedToCart|ItemRemovedFromCart|\n *           QtyChanged|CheckedOut|Rejected\n *   EFFECT  {type:'notify', text}\n *   STATE   {merchant,catalog,inventory,cart,\n *            count,total,lastReject,lastOrder}\n *\n * REJECTION PATH: decide emits a Rejected fact\n * (not []) when an action is refused \u2014 adding\n * past stock, an unknown sku, or checking out an\n * empty cart \u2014 so the refusal is an auditable\n * event. It moves no cart/stock; evolve only\n * remembers the reason for the screen.\n *\n * evolve is a pure left-fold: no clock, no\n * random, no I/O. Same log => same state.\n * ============================================ */\n\n'use strict';\n\n// ---- catalog + cart helpers (all pure) ----\nfunction find(catalog, sku) {\n  return catalog.find(p => p.sku === sku);\n}\nfunction priceOf(state, sku) {\n  const p = find(state.catalog, sku);\n  return p ? p.price : 0;\n}\nfunction inStock(state, sku) {\n  return state.inventory[sku] || 0;\n}\nfunction qtyIn(cart, sku) {\n  return cart[sku] || 0;\n}\nfunction setLine(cart, sku, qty) {\n  const next = { ...cart };\n  if (qty > 0) next[sku] = qty;\n  else delete next[sku];\n  return next;\n}\nfunction money(cents) {\n  return '$' + (cents / 100).toFixed(2);\n}\n\n// ---- projection: derive count + total ----\nfunction project(state) {\n  let count = 0, total = 0;\n  for (const sku in state.cart) {\n    const q = state.cart[sku];\n    count += q;\n    total += q * priceOf(state, sku);\n  }\n  return { ...state, count, total };\n}\n\n// ---- decide helpers (each one job) ----\nfunction reject(reason, sku) {\n  return [{ type: 'Rejected', reason, sku }];\n}\nfunction decideAdd(state, sku) {\n  if (!find(state.catalog, sku))\n    return reject('no-such-sku', sku);\n  const have = qtyIn(state.cart, sku);\n  if (have >= inStock(state, sku))\n    return reject('out-of-stock', sku);\n  return [{ type: 'ItemAddedToCart', sku }];\n}\nfunction decideRemove(state, sku) {\n  if (qtyIn(state.cart, sku) <= 0)\n    return reject('not-in-cart', sku);\n  return [{ type: 'ItemRemovedFromCart', sku }];\n}\nfunction decideSetQty(state, sku, qty) {\n  if (!find(state.catalog, sku))\n    return reject('no-such-sku', sku);\n  if (!Number.isInteger(qty) || qty < 0)\n    return reject('bad-qty', sku);\n  if (qty > inStock(state, sku))\n    return reject('out-of-stock', sku);\n  return [{ type: 'QtyChanged', sku, qty }];\n}\nfunction decideCheckout(state) {\n  if (state.count <= 0)\n    return reject('empty-cart', null);\n  return [{\n    type: 'CheckedOut',\n    items: lineItems(state),\n    total: state.total,\n  }];\n}\nfunction lineItems(state) {\n  const out = [];\n  for (const sku in state.cart) {\n    out.push({\n      sku, qty: state.cart[sku],\n      price: priceOf(state, sku),\n    });\n  }\n  return out;\n}\n\n// ---- evolve helpers (folds, reproject) ----\nfunction foldAdd(state, sku) {\n  const q = qtyIn(state.cart, sku) + 1;\n  return reproject(state,\n    setLine(state.cart, sku, q));\n}\nfunction foldRemove(state, sku) {\n  const q = qtyIn(state.cart, sku) - 1;\n  return reproject(state,\n    setLine(state.cart, sku, q));\n}\nfunction foldSetQty(state, sku, qty) {\n  return reproject(state,\n    setLine(state.cart, sku, qty));\n}\nfunction reproject(state, cart) {\n  return project({\n    ...state, cart, lastReject: null,\n  });\n}\nfunction foldCheckout(state, ev) {\n  const inv = { ...state.inventory };\n  for (const it of ev.items)\n    inv[it.sku] = (inv[it.sku] || 0) - it.qty;\n  return project({\n    ...state, inventory: inv, cart: {},\n    lastReject: null,\n    lastOrder: {\n      items: ev.items, total: ev.total,\n    },\n  });\n}\n\n// ---- seed catalog (prices in cents) ----\nconst CATALOG = [\n  { sku: 'APL', name: 'Apple', price: 50 },\n  { sku: 'MLK', name: 'Milk', price: 120 },\n  { sku: 'EGG', name: 'Eggs', price: 240 },\n  { sku: 'BRD', name: 'Bread', price: 175 },\n];\nconst STOCK = { APL: 6, MLK: 3, EGG: 2, BRD: 4 };\n\nconst machine = {\n  initial: project({\n    merchant: { name: 'Corner Store' },\n    catalog: CATALOG,\n    inventory: STOCK,\n    cart: {},\n    count: 0, total: 0,\n    lastReject: null,\n    lastOrder: null,\n  }),\n\n  // DECIDE: the sole judge of validity. A bad\n  // action becomes a Rejected fact, no throw.\n  decide(state, action) {\n    const a = action || {};\n    if (a.type === 'AddToCart')\n      return decideAdd(state, a.sku);\n    if (a.type === 'RemoveFromCart')\n      return decideRemove(state, a.sku);\n    if (a.type === 'SetQty')\n      return decideSetQty(state, a.sku, a.qty);\n    if (a.type === 'Checkout')\n      return decideCheckout(state);\n    return [];\n  },\n\n  // EVOLVE: pure left-fold of one fact -> state.\n  evolve(state, ev) {\n    if (ev.type === 'ItemAddedToCart')\n      return foldAdd(state, ev.sku);\n    if (ev.type === 'ItemRemovedFromCart')\n      return foldRemove(state, ev.sku);\n    if (ev.type === 'QtyChanged')\n      return foldSetQty(state, ev.sku, ev.qty);\n    if (ev.type === 'CheckedOut')\n      return foldCheckout(state, ev);\n    if (ev.type === 'Rejected')\n      return { ...state, lastReject: ev };\n    return state;\n  },\n\n  // REACT: a settled order asks the world to\n  // notify (an EFFECT, not a fact).\n  react(state, ev) {\n    if (ev.type !== 'CheckedOut') return [];\n    return [{\n      type: 'notify',\n      text: 'Order placed: ' + money(ev.total),\n    }];\n  },\n\n  // RESOLVE: address a morsel of state.\n  // Local:  store://cart/total\n  // Global: aces://<user>/store/<id>/cart/total\n  //   (World strips the prefix; we take the\n  //    trailing field, exactly like calculator.)\n  resolve(state, uri) {\n    const f = uri\n      .replace(/^store:\\/\\//, '')\n      .replace(/^.*\\/store\\/[^/]+\\//, '');\n    if (f === 'cart/total') return state.total;\n    if (f === 'cart/count') return state.count;\n    if (f === 'catalog') return state.catalog;\n    if (f === 'cart') return state.cart;\n    if (f === 'inventory') return state.inventory;\n    if (f === 'merchant') return state.merchant;\n    throw new Error('no such uri: ' + uri);\n  },\n\n  render(state) {\n    const { renderStore } = require('./store-ui');\n    return renderStore(state);\n  },\n};\n\nmodule.exports = { machine };\n","store-ui":"/* ==============================================\n * STORE UI \u2014 ascii kit           (<=50 col house)\n * ----------------------------------------------\n * Atomic design, no framework. Each component is\n * a PURE function props -> string (or string[]).\n * We stack and join lines into one phone-narrow\n * card, atoms -> molecules -> screen.\n *\n *   atom      money, pad, padL\n *   molecule  shelfRow  (a catalog line)\n *             cartRow   (a basket line)\n *   organism  shelf, basket\n *   template  frame     (border around a body)\n *   screen    renderStore (state -> frame)\n *\n * NON-CAPTIVE: nothing is clickable in a pipe. A\n * shelf row shows a sku TAG; the harness \"taps\"\n * it by dispatching AddToCart{sku}. The foot\n * line names the gesture as a legend.\n * ============================================ */\n\n'use strict';\n\n// ---- atoms ----\nfunction money(cents) {\n  return '$' + (cents / 100).toFixed(2);\n}\nfunction pad(s, w) {\n  s = String(s);\n  return s.length >= w\n    ? s : s + ' '.repeat(w - s.length);\n}\nfunction padL(s, w) {\n  s = String(s);\n  return s.length >= w\n    ? s : ' '.repeat(w - s.length) + s;\n}\n\n// ---- molecules ----\nfunction shelfRow(p, stock) {\n  return ' ' + pad(p.sku, 3) + ' '\n    + pad(p.name, 6)\n    + padL(money(p.price), 7)\n    + '  x' + stock;\n}\nfunction cartRow(sku, qty, price) {\n  return ' ' + pad(sku, 3)\n    + ' x' + pad(qty, 2)\n    + padL(money(qty * price), 8);\n}\n\n// ---- organisms ----\nfunction shelf(state) {\n  return state.catalog.map(p =>\n    shelfRow(p, state.inventory[p.sku] || 0));\n}\nfunction basket(state) {\n  const rows = [];\n  for (const sku in state.cart) {\n    rows.push(cartRow(\n      sku, state.cart[sku],\n      priceFor(state, sku)));\n  }\n  if (!rows.length) rows.push('  (empty)');\n  return rows;\n}\nfunction priceFor(state, sku) {\n  const p = state.catalog\n    .find(x => x.sku === sku);\n  return p ? p.price : 0;\n}\n\n// ---- template: device-style frame ----\n// auto-sizes to the widest line so the card\n// never spills its border.\nfunction frame(title, body) {\n  const bar = '[ ' + title + ' ]';\n  const all = body.concat([bar]);\n  const W = Math.max(\n    ...all.map(l => l.length)) + 1;\n  const top = '.' + '-'.repeat(W + 1) + '.';\n  const bot = \"'\" + '-'.repeat(W + 1) + \"'\";\n  const row = s => '| ' + pad(s, W) + '|';\n  return [top, row(bar), row(''),\n    ...body.map(row), bot].join('\\n');\n}\n\n// ---- screen: store ----\nfunction renderStore(state) {\n  const body = [\n    ' CATALOG',\n    ...shelf(state),\n    '',\n    ' CART',\n    ...basket(state),\n    ' ' + '-'.repeat(13),\n    ' items' + padL(state.count, 8),\n    ' TOTAL' + padL(money(state.total), 8),\n    '',\n    footer(state),\n  ];\n  return frame(state.merchant.name, body);\n}\nfunction footer(state) {\n  if (state.lastReject)\n    return ' x: ' + state.lastReject.reason;\n  if (state.lastOrder)\n    return ' ok: '\n      + money(state.lastOrder.total) + ' paid';\n  return ' tap sku -> AddToCart';\n}\n\nmodule.exports = {\n  money, pad, padL, shelfRow, cartRow,\n  shelf, basket, frame, renderStore,\n};\n","platform":"/* ==============================================\n * PLATFORM \u2014 a declarative      (<=50 col house)\n * nested ENUM of runtimes.\n * ----------------------------------------------\n * ENUM here means a CLOSED, EXHAUSTIVE set: the\n * whole world of places ACES can run, written as\n * one tree of DATA \u2014 kind -> leaf -> facts. No\n * `if` ladders; detection, capabilities, and\n * recommend() are all DERIVED by walking it.\n *\n *   serverless: durable-object,\n *               cloudflare-worker,\n *               firebase-fn, gcp-cloud-fn\n *   native:     react-native\n *   web:        react, svelte, plain-html\n *   runtime:    node, bun, deno\n *\n * Each leaf declares two things:\n *   sniff(g) -> bool   am I this place?\n *   caps               what can I HONESTLY do?\n *     admin      @instantdb/admin (server SDK;\n *                needs the SECRET token, so\n *                never true in a browser)\n *     client     @instantdb/core (public app\n *                id only \u2014 browser-safe)\n *     pear       Holepunch swarm (needs real\n *                sockets + native deps)\n *     persistent can state survive a restart?\n *\n * validate() runs at load: a leaf missing a cap\n * or a sniff is a BUILD error, not a runtime\n * surprise \u2014 same doctrine as version.js.\n *\n * ORDER IS MEANING: kinds and leaves are tried\n * top-to-bottom, first sniff wins. Specific\n * before general (durable-object before plain\n * worker, react before plain-html, bun before\n * node \u2014 bun also reports process.versions.node).\n * ============================================ */\n\n'use strict';\n\n// tiny constructor so every leaf reads the same\nfunction leaf(caps, sniff) {\n  return { caps, sniff };\n}\n\n// sniff helpers \u2014 pure over an injected globals\n// object `g`, so tests can fake any planet.\nconst has = (g, k) => typeof g[k] !== 'undefined';\nconst env = g =>\n  (has(g, 'process') && g.process.env) || {};\nconst vers = g =>\n  (has(g, 'process') && g.process.versions) || {};\nconst dom = g =>\n  has(g, 'window') && has(g, 'document');\n\nconst TREE = {\n  serverless: {\n    // DO = Durable Object: a cloudflare worker\n    // plus an identity and its own storage.\n    'durable-object': leaf(\n      { admin: true, client: false,\n        pear: false, persistent: true },\n      g => has(g, 'WebSocketPair') &&\n           has(g, 'DurableObject')),\n    // stateless isolate: compute, no memory of\n    // you. admin SDK ok (secrets live in env).\n    'cloudflare-worker': leaf(\n      { admin: true, client: false,\n        pear: false, persistent: false },\n      g => has(g, 'WebSocketPair')),\n    'firebase-fn': leaf(\n      { admin: true, client: false,\n        pear: false, persistent: false },\n      g => !!env(g).FIREBASE_CONFIG &&\n           !!vers(g).node),\n    'gcp-cloud-fn': leaf(\n      { admin: true, client: false,\n        pear: false, persistent: false },\n      g => (!!env(g).FUNCTION_TARGET ||\n            !!env(g).K_SERVICE) &&\n           !!vers(g).node),\n  },\n  native: {\n    'react-native': leaf(\n      { admin: false, client: true,\n        pear: false, persistent: true },\n      g => has(g, 'navigator') &&\n        g.navigator.product === 'ReactNative'),\n  },\n  web: {\n    // browsers NEVER get admin: that SDK wants\n    // the secret token, and a browser is enemy\n    // territory for secrets. client SDK only.\n    react: leaf(\n      { admin: false, client: true,\n        pear: false, persistent: true },\n      g => dom(g) && (has(g, 'React') ||\n        has(g, '__REACT_DEVTOOLS_GLOBAL_HOOK__'))),\n    svelte: leaf(\n      { admin: false, client: true,\n        pear: false, persistent: true },\n      g => dom(g) && has(g, '__svelte')),\n    'plain-html': leaf(\n      { admin: false, client: true,\n        pear: false, persistent: true },\n      g => dom(g)),\n  },\n  runtime: {\n    bun: leaf(\n      { admin: true, client: false,\n        pear: true, persistent: true },\n      g => has(g, 'Bun') || !!vers(g).bun),\n    deno: leaf(\n      // npm compat runs admin; hypercore's\n      // native deps do not \u2014 honest no on pear.\n      { admin: true, client: false,\n        pear: false, persistent: true },\n      g => has(g, 'Deno')),\n    node: leaf(\n      { admin: true, client: false,\n        pear: true, persistent: true },\n      g => !!vers(g).node),\n  },\n};\n\n// where we land when no sniff matches. memory\n// only \u2014 we refuse to guess at capabilities.\nconst UNKNOWN = leaf(\n  { admin: false, client: false,\n    pear: false, persistent: false },\n  () => true);\n\n// -- the build-time exhaustiveness check -------\n// every leaf must declare every cap (a boolean)\n// and a sniff function. Forgot one? The module\n// refuses to load. The enum stays closed.\nconst CAPS =\n  ['admin', 'client', 'pear', 'persistent'];\nfunction validate(tree) {\n  for (const kind of Object.keys(tree)) {\n    for (const name of Object.keys(tree[kind])) {\n      const l = tree[kind][name];\n      const at = kind + '.' + name;\n      if (typeof l.sniff !== 'function')\n        throw new Error(\n          'leaf ' + at + ' has no sniff()');\n      for (const c of CAPS)\n        if (typeof (l.caps || {})[c] !==\n            'boolean')\n          throw new Error('leaf ' + at +\n            ' missing cap \"' + c + '\"');\n    }\n  }\n  return true;\n}\nvalidate(TREE);\n\n// flat list of every 'kind.name' path\nfunction leaves(tree) {\n  tree = tree || TREE;\n  const out = [];\n  for (const k of Object.keys(tree))\n    for (const n of Object.keys(tree[k]))\n      out.push(k + '.' + n);\n  return out;\n}\n\n// walk the tree in declared order; first sniff\n// that answers true names the planet we are on.\nfunction detect(g) {\n  g = g || globalThis;\n  for (const kind of Object.keys(TREE))\n    for (const name of Object.keys(TREE[kind]))\n      if (TREE[kind][name].sniff(g))\n        return kind + '.' + name;\n  return 'unknown';\n}\n\nfunction leafAt(path) {\n  if (path === 'unknown') return UNKNOWN;\n  const [kind, name] = path.split('.');\n  return TREE[kind][name];\n}\n\n// caps -> the sync backends they permit. This\n// is the DERIVATION the enum exists for: no\n// leaf lists backends by hand, so a leaf can\n// never claim a backend its caps forbid.\nfunction backendsOf(caps) {\n  const b = [];\n  if (caps.admin) b.push('instant-admin');\n  if (caps.client) b.push('instant-client');\n  if (caps.pear) b.push('pear');\n  b.push('memory');       // always, everywhere\n  return b;\n}\n\nfunction diagnose(g) {\n  const target = detect(g);\n  const l = leafAt(target);\n  const backends = backendsOf(l.caps);\n  const warn = [];\n  if (!l.caps.pear)\n    warn.push('no pear p2p here');\n  if (!l.caps.persistent)\n    warn.push('stateless: replay from sync');\n  if (target === 'unknown')\n    warn.push('unrecognized: memory only');\n  return {\n    target, backends,\n    default: backends[0],\n    caps: { ...l.caps },\n    warnings: warn,\n  };\n}\n\n// recommend() \u2014 what NEXT.md item 2 asked to\n// derive: the adapter stack for wherever we\n// happen to be standing.\nfunction recommend(g) {\n  const d = diagnose(g);\n  return { use: d.default, stack: d.backends };\n}\n\n// pretty one-screen report, sized to content\nfunction report(g) {\n  const d = diagnose(g);\n  const rows = [\n    'target : ' + d.target,\n    'default: ' + d.default,\n    'sync   :',\n    ...d.backends.map(b => '  + ' + b),\n    ...d.warnings.map(w => '! ' + w),\n  ];\n  const w = Math.max(\n    ...rows.map(r => r.length), 19);\n  const pad = s =>\n    s + ' '.repeat(w - s.length);\n  return [\n    '.--- ACES platform ' +\n      '-'.repeat(w - 17) + '.',\n    ...rows.map(r => '| ' + pad(r) + ' |'),\n    \"'\" + '-'.repeat(w + 2) + \"'\",\n  ].join('\\n');\n}\n\nmodule.exports = {\n  TREE, leaves, validate,\n  detect, diagnose, recommend, report,\n};\n","version":"/* ==============================================\n * VERSION \u2014 event schema SemVer (<=50 col house)\n * ----------------------------------------------\n * SemVer = Semantic Versioning (major.minor.\n * patch). NEXT.md item 1: the spine of a log\n * that outlives the code that wrote it.\n *\n * The contract we enforce:\n *   - package.json#version is the ONE source\n *     of truth for \"current version\".\n *   - A MINOR bump means \"an event's shape\n *     changed\". Every minor therefore ships a\n *     migration that lifts the previous shape\n *     into the new one. (A no-op minor still\n *     writes an identity migration \u2014 being\n *     explicit is the point.)\n *   - A PATCH never changes event shape, so\n *     events carry only 'major.minor' as `v`.\n *   - A MAJOR bump is a new era (breaking);\n *     migrations reset. Out of scope here.\n *\n * Checks run at DEFINITION time, so a skipped\n * migration is a build error, not a runtime\n * surprise years later mid-replay:\n *   - a migration must exist for every minor\n *     from 1 up to current (missing = throw)\n *   - a migration beyond the current version\n *     is also a throw (code and package.json\n *     disagree about what \"current\" means)\n *\n * THE LOG IS NEVER REWRITTEN. Old events stay\n * in the log in their original shape forever;\n * migration happens at FOLD time, on the copy\n * handed to evolve/react. History is history.\n *\n * Peers negotiate: both sides speak the LOWER\n * version until both upgrade. negotiate() is\n * that one-line treaty.\n * ============================================ */\n\n'use strict';\n\n// '1.2.3' -> { major:1, minor:2, patch:3 }\nfunction parse(v) {\n  const m = /^(\\d+)\\.(\\d+)\\.(\\d+)/.exec(v || '');\n  if (!m) throw new Error(\n    'bad semver: ' + JSON.stringify(v));\n  return {\n    major: +m[1], minor: +m[2], patch: +m[3],\n  };\n}\n\n// '1.2' -> { major:1, minor:2 }  (event tags)\nfunction parseTag(t) {\n  const m = /^(\\d+)\\.(\\d+)$/.exec(t || '');\n  if (!m) throw new Error(\n    'bad version tag: ' + JSON.stringify(t));\n  return { major: +m[1], minor: +m[2] };\n}\n\n// semver compare: -1 | 0 | 1\nfunction cmp(a, b) {\n  const x = parse(a), y = parse(b);\n  for (const k of ['major', 'minor', 'patch']) {\n    if (x[k] !== y[k])\n      return x[k] < y[k] ? -1 : 1;\n  }\n  return 0;\n}\n\n// engine metadata that must survive migration\n// even if a migration forgets to spread it.\nconst META = ['_id', '_seq', '_at', '_origin'];\nfunction keepMeta(src, out) {\n  for (const k of META)\n    if (k in src && !(k in out)) out[k] = src[k];\n  return out;\n}\n\n/* defineSchema({ version, migrations })\n *   version    \u2014 the package.json string.\n *                Pass it straight through:\n *                require('./package.json')\n *                  .version\n *   migrations \u2014 { '1.1': fn, '1.2': fn, ... }\n *                fn lifts an event FROM the\n *                previous minor's shape TO the\n *                keyed version's shape. Pure;\n *                returns a NEW event object.\n * Returns { tag, stamp, migrate, version }.\n */\nfunction defineSchema(opts) {\n  const cur = parse(opts.version);\n  const migrations = opts.migrations || {};\n  const tag = cur.major + '.' + cur.minor;\n\n  // -- build-time check 1: no gaps ------------\n  for (let m = 1; m <= cur.minor; m++) {\n    const key = cur.major + '.' + m;\n    if (typeof migrations[key] !== 'function')\n      throw new Error(\n        'version ' + opts.version + ' declared' +\n        ' but migration \"' + key + '\" is ' +\n        'missing. Every minor bump ships a ' +\n        'migration (identity if shape kept).');\n  }\n\n  // -- build-time check 2: none from the future\n  for (const key of Object.keys(migrations)) {\n    const k = parseTag(key);\n    const ahead =\n      k.major !== cur.major ||\n      k.minor > cur.minor || k.minor < 1;\n    if (ahead) throw new Error(\n      'migration \"' + key + '\" is outside ' +\n      'version ' + opts.version + '. Bump ' +\n      'package.json (or delete the stray).');\n  }\n\n  // stamp a freshly DECIDED event with the\n  // current tag. New facts are born current.\n  function stamp(e) {\n    return { ...e, v: tag };\n  }\n\n  // lift an event to the current shape. Events\n  // with no `v` are the genesis shape ('M.0').\n  // The caller's LOG keeps the original; only\n  // the folded copy is upgraded.\n  function migrate(e) {\n    const t = parseTag(e.v || cur.major + '.0');\n    if (t.major !== cur.major) throw new Error(\n      'event from major ' + t.major + ', we ' +\n      'are ' + tag + '. Majors are eras; ' +\n      'cross-era replay needs an importer.');\n    if (t.minor > cur.minor) throw new Error(\n      'event v' + e.v + ' is from the future ' +\n      '(we fold ' + tag + '). Peers must ' +\n      'negotiate() to the lower version.');\n    if (t.minor === cur.minor) return e;\n    let out = e;\n    for (let m = t.minor + 1;\n         m <= cur.minor; m++) {\n      const fn = migrations[cur.major + '.' + m];\n      out = keepMeta(out, { ...fn(out) });\n    }\n    return { ...out, v: tag };\n  }\n\n  return { tag, stamp, migrate,\n    version: opts.version };\n}\n\n// both peers speak the LOWER version until both\n// have upgraded. Returns that version string.\nfunction negotiate(mine, theirs) {\n  return cmp(mine, theirs) <= 0 ? mine : theirs;\n}\n\n/* versioned(machine, schema) -> machine\n * The whole point: core.js never learns that\n * versioning exists. Wrap any machine \u2014\n *   decide  stamps `v` on new events\n *   evolve  migrates before folding\n *   react   sees the migrated shape too\n * replay() and ingest() flow through the same\n * evolve, so ancient logs and remote peers get\n * lifted for free. Zero engine changes.\n */\nfunction versioned(machine, schema) {\n  const react = machine.react || (() => []);\n  return {\n    ...machine,\n    decide: (s, a) =>\n      (machine.decide(s, a) || [])\n        .map(schema.stamp),\n    evolve: (s, e) =>\n      machine.evolve(s, schema.migrate(e)),\n    react: (s, e) =>\n      react(s, schema.migrate(e)),\n  };\n}\n\nmodule.exports = {\n  parse, parseTag, cmp,\n  defineSchema, negotiate, versioned,\n};\n","view":"/* ==============================================\n * VIEW \u2014 one spec, three     (<=50 col house)\n * targets: ASCII, React, React Native.\n * ----------------------------------------------\n * NEXT.md item 3. The ascii kits (ui.js,\n * store-ui.js) already prove\n * state -> view-tree -> string. This module\n * generalizes the middle: components return a\n * NEUTRAL VIEW NODE \u2014\n *\n *     { kind, props, children }\n *\n * \u2014 and that node IS the DSL (Domain-Specific\n * Language). Three thin backends walk it:\n *\n *   toAscii(node)            -> string\n *   toReact(node, world)     -> element tree\n *   toReactNative(node, world) -> element tree\n *\n * The DSL starts deliberately tiny \u2014 box, text,\n * row, button \u2014 and grows only as screens\n * demand. An unknown kind THROWS: the set is\n * closed, same doctrine as platform.js.\n *\n * No React in this repo. The React backends\n * take an injected `world` ({ createElement,\n * dispatch, View, Text, Pressable }) \u2014 the\n * same \"control the world\" move as deps.js, so\n * tests fake the framework and CI never needs\n * npm install. A button's `action` prop is a\n * plain ACES action; pressing it just calls\n * world.dispatch(action). The view layer never\n * mutates anything \u2014 it asks, like react().\n * ============================================ */\n\n'use strict';\n\n// -- constructors: the whole vocabulary --------\nconst node = (kind, props, children) =>\n  ({ kind, props: props || {},\n     children: children || [] });\n\nconst text = value =>\n  node('text', { value });\nconst button = (label, action) =>\n  node('button', { label, action });\nconst row = (...children) =>\n  node('row', null, children);\nconst box = (title, ...children) =>\n  node('box', { title }, children);\n\nfunction unknown(n) {\n  return new Error(\n    'unknown view kind: ' + n.kind);\n}\n\n/* -- backend 1: ASCII --------------------------\n * Every node renders to an array of lines;\n * row zips arrays side by side, box frames\n * them. Pure string math, zero I/O.\n */\nconst pad = (s, w) =>\n  s + ' '.repeat(w - s.length);\nconst widest = ls => Math.max(\n  0, ...ls.map(l => l.length));\n\nfunction lines(n) {\n  switch (n.kind) {\n    case 'text':\n      return [String(n.props.value)];\n    case 'button':\n      return ['[ ' + n.props.label + ' ]'];\n    case 'row': {\n      const cols = n.children.map(lines);\n      const h = Math.max(\n        0, ...cols.map(c => c.length));\n      const ws = cols.map(widest);\n      const out = [];\n      for (let i = 0; i < h; i++)\n        out.push(cols.map((c, j) =>\n          pad(c[i] || '', ws[j]))\n          .join(' ').trimEnd());\n      return out;\n    }\n    case 'box': {\n      const inner =\n        n.children.flatMap(lines);\n      const t = n.props.title;\n      const head = t ? '- ' + t + ' ' : '';\n      const w = Math.max(widest(inner),\n        head.length + 2);\n      return [\n        '.-' + head +\n          '-'.repeat(w - head.length) + '-.',\n        ...inner.map(l =>\n          '| ' + pad(l, w) + ' |'),\n        \"'-\" + '-'.repeat(w) + \"-'\",\n      ];\n    }\n    default: throw unknown(n);\n  }\n}\nconst toAscii = n => lines(n).join('\\n');\n\n/* -- backend 2: React (DOM) --------------------\n * world = { createElement, dispatch }\n */\nfunction toReact(n, world) {\n  const ce = world.createElement;\n  const kids = n.children.map(\n    c => toReact(c, world));\n  switch (n.kind) {\n    case 'text':\n      return ce('span', null,\n        String(n.props.value));\n    case 'button':\n      return ce('button', {\n        onClick: () =>\n          world.dispatch(n.props.action),\n      }, n.props.label);\n    case 'row':\n      return ce('div', { style: {\n        display: 'flex',\n        flexDirection: 'row',\n        gap: 8 } }, ...kids);\n    case 'box':\n      return ce('div', { style: {\n        border: '1px solid currentColor',\n        padding: 8 } },\n        n.props.title\n          ? ce('strong', null, n.props.title)\n          : null,\n        ...kids);\n    default: throw unknown(n);\n  }\n}\n\n/* -- backend 3: React Native -------------------\n * world = { createElement, dispatch,\n *           View, Text, Pressable }\n * RN has no div/span: raw strings must live\n * inside <Text>, presses use <Pressable>. Those\n * three components are injected, never imported.\n */\nfunction toReactNative(n, world) {\n  const ce = world.createElement;\n  const kids = n.children.map(\n    c => toReactNative(c, world));\n  switch (n.kind) {\n    case 'text':\n      return ce(world.Text, null,\n        String(n.props.value));\n    case 'button':\n      return ce(world.Pressable, {\n        onPress: () =>\n          world.dispatch(n.props.action),\n      }, ce(world.Text, null,\n        n.props.label));\n    case 'row':\n      return ce(world.View, { style: {\n        flexDirection: 'row',\n        gap: 8 } }, ...kids);\n    case 'box':\n      return ce(world.View, { style: {\n        borderWidth: 1,\n        padding: 8 } },\n        n.props.title\n          ? ce(world.Text,\n              { style: {\n                fontWeight: 'bold' } },\n              n.props.title)\n          : null,\n        ...kids);\n    default: throw unknown(n);\n  }\n}\n\nmodule.exports = {\n  node, text, button, row, box,\n  toAscii, toReact, toReactNative,\n};\n","parse":"/* ==============================================\n * PARSE \u2014 parser-PRINTERS    (<=50 col house)\n * ----------------------------------------------\n * Point-Free's swift-parsing idea, in ACES\n * house JS: one SPEC is both directions.\n *\n *   p.parse(text)  -> { value, rest } | null\n *   p.print(value) -> text | null\n *\n * Failure is a value (null), never a throw \u2014\n * same doctrine as decide(): the caller turns\n * a null into a Rejected fact if it matters.\n *\n * THE LAWS (test-parse.js holds us to them):\n *   parseAll(p, p.print(v))  deep-equals v\n *   p.print(parseAll(p, s))  ===  s\n * A spec that parses what it cannot print (or\n * prints what it cannot parse) is a bug.\n *\n * Why ACES cares: routes. A navigation route\n * table written as a parser-printer means\n * decide() VALIDATES a destination by parsing\n * it, and the UI PRINTS state back into the\n * URL \u2014 one source of truth, zero drift\n * between \"what links exist\" and \"what state\n * is legal\" (swift-url-routing's trick).\n *\n * Conventions:\n * - a VOID part (literal) carries no value;\n *   seq() collects only non-void values, and\n *   yields a scalar when exactly one remains.\n * - map(p, fwd, bwd): bwd returns UNDEFINED\n *   to say \"not my value\" (lets alt() route\n *   printing); any other return (even null)\n *   is the inner value to print.\n * ============================================ */\n\n'use strict';\n\n// -- primitives --------------------------------\n\n// exact text. Parses to nothing (void); prints\n// itself regardless of value.\nfunction lit(text) {\n  return {\n    void: true,\n    parse: s => s.startsWith(text)\n      ? { value: null, rest: s.slice(text.length) }\n      : null,\n    print: () => text,\n  };\n}\n\n// non-negative integer, e.g. ids and ports\nconst int = {\n  parse: s => {\n    const m = /^\\d+/.exec(s);\n    return m ? { value: +m[0],\n      rest: s.slice(m[0].length) } : null;\n  },\n  print: v => Number.isInteger(v) && v >= 0\n    ? String(v) : null,\n};\n\n// one URI path segment: chars up to '/'\nconst segment = {\n  parse: s => {\n    const m = /^[^/]+/.exec(s);\n    return m ? { value: m[0],\n      rest: s.slice(m[0].length) } : null;\n  },\n  print: v => typeof v === 'string' &&\n    v.length && !v.includes('/') ? v : null,\n};\n\n// everything that remains\nconst restOf = {\n  parse: s => ({ value: s, rest: '' }),\n  print: v => typeof v === 'string' ? v : null,\n};\n\n// -- combinators -------------------------------\n\n// run parts left to right. Value = the non-void\n// values (scalar if exactly one). Print undoes\n// that shape and concatenates.\nfunction seq(...parts) {\n  const bearing = parts\n    .map((p, i) => p.void ? -1 : i)\n    .filter(i => i >= 0);\n  return {\n    void: bearing.length === 0,\n    parse(s) {\n      const vals = [];\n      for (const p of parts) {\n        const r = p.parse(s);\n        if (!r) return null;\n        if (!p.void) vals.push(r.value);\n        s = r.rest;\n      }\n      const value =\n        bearing.length === 0 ? null :\n        bearing.length === 1 ? vals[0] : vals;\n      return { value, rest: s };\n    },\n    print(value) {\n      const vals =\n        bearing.length === 0 ? [] :\n        bearing.length === 1 ? [value] : value;\n      if (bearing.length > 1 &&\n          (!Array.isArray(vals) ||\n           vals.length !== bearing.length))\n        return null;\n      let out = '', vi = 0;\n      for (const p of parts) {\n        const piece = p.void\n          ? p.print()\n          : p.print(vals[vi++]);\n        if (piece === null) return null;\n        out += piece;\n      }\n      return out;\n    },\n  };\n}\n\n// first branch that answers. Printing asks\n// each branch in turn; bwd's undefined (see\n// map) lets a branch decline a foreign value.\nfunction alt(...branches) {\n  return {\n    parse(s) {\n      for (const b of branches) {\n        const r = b.parse(s);\n        if (r) return r;\n      }\n      return null;\n    },\n    print(v) {\n      for (const b of branches) {\n        const t = b.print(v);\n        if (t !== null) return t;\n      }\n      return null;\n    },\n  };\n}\n\n// bidirectional map. fwd lifts the parsed\n// value; bwd lowers it for printing and\n// returns undefined to refuse (not mine).\nfunction map(p, fwd, bwd) {\n  return {\n    void: p.void,\n    parse(s) {\n      const r = p.parse(s);\n      return r &&\n        { value: fwd(r.value), rest: r.rest };\n    },\n    print(v) {\n      const inner = bwd(v);\n      return inner === undefined\n        ? null : p.print(inner);\n    },\n  };\n}\n\n// a constant screen/case: text <-> value\nfunction tag(text, value) {\n  const same = v =>\n    JSON.stringify(v) === JSON.stringify(value);\n  return map(lit(text),\n    () => value,\n    v => same(v) ? null : undefined);\n}\n\n// zero or more, separated by literal `sep`\nfunction many(p, sep) {\n  return {\n    parse(s) {\n      const out = [];\n      const first = p.parse(s);\n      if (!first)\n        return { value: out, rest: s };\n      out.push(first.value);\n      s = first.rest;\n      for (;;) {\n        const tail = sep\n          ? (s.startsWith(sep)\n              ? p.parse(s.slice(sep.length))\n              : null)\n          : p.parse(s);\n        if (!tail) break;\n        out.push(tail.value);\n        s = tail.rest;\n      }\n      return { value: out, rest: s };\n    },\n    print(vs) {\n      if (!Array.isArray(vs)) return null;\n      const parts = vs.map(v => p.print(v));\n      if (parts.some(x => x === null))\n        return null;\n      return parts.join(sep || '');\n    },\n  };\n}\n\n// parse and demand the WHOLE input was eaten.\n// This is the front door for validators.\nfunction parseAll(p, s) {\n  const r = p.parse(String(s));\n  return r && r.rest === '' ? r.value : null;\n}\n\n// -- the house address, as one spec ------------\n// aces://<user>/<kind>/<id>/<field>\n// (world.js today does this with regex; this\n// spec both validates AND builds addresses.)\nconst uriRoute = map(\n  seq(lit('aces://'), segment, lit('/'),\n      segment, lit('/'), segment, lit('/'),\n      segment),\n  ([user, kind, id, field]) =>\n    ({ user, kind, id, field }),\n  u => u && u.user && u.kind && u.id && u.field\n    ? [u.user, u.kind, u.id, u.field]\n    : undefined);\n\nmodule.exports = {\n  lit, int, segment, restOf,\n  seq, alt, map, tag, many,\n  parseAll, uriRoute,\n};\n","nav":"/* ==============================================\n * ARCHETYPE: navigation      (<=50 col house)\n * ----------------------------------------------\n * NEXT.md item 4 + Michael's ask: navigation\n * is STATE, and the route table is a\n * PARSER-PRINTER (parse.js). One spec is the\n * whole truth about which screens exist:\n *\n *   decide() judges a destination by PARSING\n *   it \u2014 an unparseable route becomes a\n *   Rejected fact, never a broken screen.\n *   react() asks the world to PRINT state\n *   back into the address bar (a 'hash'\n *   effect; the browser wires it to\n *   location.hash, tests wire a spy).\n *\n * Settings are folded state too (glyph size,\n * sound), so they replay and sync like every\n * other fact. The current screen is\n * addressable:\n *   aces://<user>/device/<id>/screen\n *\n * ACES letters, owned by this archetype:\n *   ACTION  {type:'NAVIGATE', to}\n *           {type:'BACK'}\n *           {type:'SET', key, value}\n *   EVENT   NavigatedTo|WentBack|\n *           SettingChanged|Rejected\n *   EFFECT  {type:'hash', text}\n *   STATE   {screen, stack, settings}\n * ============================================ */\n\n'use strict';\n\nconst P = require('./parse');\n\n// -- the route table: one parser-printer ------\n// Adding a screen = adding a line HERE; decide,\n// the address bar, and render all follow.\nconst SCREENS = ['calc', 'store', 'ledger',\n  'platform', 'settings'];\nconst route = P.alt(...SCREENS.map(name =>\n  P.tag(name, { screen: name })));\n\n// settings the archetype will accept, with\n// their closed sets of legal values.\nconst SETTINGS = {\n  glyph: ['sm', 'md', 'lg'],\n  sound: [true, false],\n};\n\nconst machine = {\n  initial: {\n    screen: 'calc',\n    stack: [],                // for BACK\n    settings: { glyph: 'md', sound: true },\n  },\n\n  decide(state, action) {\n    const a = action || {};\n    if (a.type === 'NAVIGATE') {\n      const dest = P.parseAll(route,\n        String(a.to || ''));\n      if (!dest)\n        return [{ type: 'Rejected',\n          reason: 'no-such-screen',\n          to: a.to }];\n      if (dest.screen === state.screen)\n        return [];             // already there\n      return [{ type: 'NavigatedTo',\n        screen: dest.screen }];\n    }\n    if (a.type === 'BACK')\n      return state.stack.length\n        ? [{ type: 'WentBack' }]\n        : [{ type: 'Rejected',\n            reason: 'nothing-back' }];\n    if (a.type === 'SET') {\n      const legal = SETTINGS[a.key];\n      if (!legal || !legal.some(v =>\n          v === a.value))\n        return [{ type: 'Rejected',\n          reason: 'no-such-setting',\n          key: a.key, value: a.value }];\n      if (state.settings[a.key] === a.value)\n        return [];\n      return [{ type: 'SettingChanged',\n        key: a.key, value: a.value }];\n    }\n    return [];\n  },\n\n  evolve(state, ev) {\n    if (ev.type === 'NavigatedTo')\n      return { ...state,\n        stack: [...state.stack, state.screen],\n        screen: ev.screen };\n    if (ev.type === 'WentBack')\n      return { ...state,\n        screen: state.stack[\n          state.stack.length - 1],\n        stack: state.stack.slice(0, -1) };\n    if (ev.type === 'SettingChanged')\n      return { ...state, settings: {\n        ...state.settings,\n        [ev.key]: ev.value } };\n    return state;\n  },\n\n  // after any move, ask the world to show the\n  // printed route in its address bar. PRINT is\n  // the same spec that validated the parse.\n  react(state, ev) {\n    if (ev.type === 'NavigatedTo' ||\n        ev.type === 'WentBack')\n      return [{ type: 'hash',\n        text: route.print(\n          { screen: state.screen }) }];\n    return [];\n  },\n\n  resolve(state, uri) {\n    const f = uri\n      .replace(/^nav:\\/\\//, '')\n      .replace(/^.*\\/device\\/[^/]+\\//, '');\n    if (f === 'screen') return state.screen;\n    if (f === 'stack') return state.stack;\n    if (f === 'settings')\n      return state.settings;\n    throw new Error('no such uri: ' + uri);\n  },\n\n  // dogfood: render through view.js nodes\n  render(state) {\n    const V = require('./view');\n    const rows = SCREENS.map(s =>\n      V.text((s === state.screen\n        ? '> ' : '  ') + s));\n    const set = Object.entries(state.settings)\n      .map(([k, v]) =>\n        V.text('  ' + k + ' = ' + v));\n    return V.toAscii(V.box('navigation',\n      ...rows,\n      V.text(''),\n      V.text('settings'),\n      ...set));\n  },\n};\n\nmodule.exports =\n  { machine, route, SCREENS, SETTINGS };\n","ledger":"/* ==============================================\n * ARCHETYPE: token ledger    (<=50 col house)\n * ----------------------------------------------\n * The token economy for the games, as an\n * event-sourced ledger. TOKENS ARE LEDGER\n * UNITS, NOT MONEY: nothing in this file\n * touches a payment rail. Real rails (Stripe,\n * a Solana wallet, HTTP-402/x402) live behind\n * processors OUTSIDE the fold; when one of\n * them confirms a real-world purchase, that\n * confirmation enters as a RecordPurchase\n * ACTION and the mint becomes a fact here.\n *\n * FAIRNESS RULES \u2014 Michael's explicit design,\n * enforced mechanically, so \"nothing of a\n * ponzi nature is possible\" by construction:\n *\n *  1. NO UNBACKED MINT. Tokens exist only as\n *     a fact that references a recorded\n *     external purchase (source + ref +\n *     cents). No purchase, no mint.\n *  2. NO DOUBLE MINT. A backing ref is\n *     consumed forever; replaying the same\n *     Shopify order mints nothing twice.\n *  3. CONSERVATION. sum(balances) is always\n *     exactly minted - burned. Tokens never\n *     appear or vanish inside the fold.\n *  4. NO NEGATIVES. You spend what you hold.\n *  5. GENESIS HUMILITY. The genesis wallet\n *     (Michael's) may never end richer than\n *     ANY other account: every other account\n *     always holds >= what genesis holds.\n *     Genesis cannot mint to itself, and any\n *     event that would leave genesis above\n *     someone is Rejected.\n *\n * decide() proves an action safe by folding\n * the candidate events over a scratch copy\n * with the real evolve, then checking the\n * invariants \u2014 the fold is its own oracle.\n *\n * RATE: 100 tokens per cent. The $14.28\n * Shopify emoji = 1428 cents = 142,800\n * tokens (his \"about 100x the value\" seed).\n *\n * ACES letters, owned by this archetype:\n *   ACTION  RecordPurchase|Transfer|Burn\n *   EVENT   TokensMinted|Transferred|\n *           Burned|Rejected\n *   EFFECT  {type:'notify', text}\n *   STATE   {genesis, accounts, minted,\n *            burned, refs}\n * ============================================ */\n\n'use strict';\n\nconst RATE = 100;    // tokens per cent\n\nconst posInt = n =>\n  Number.isInteger(n) && n > 0;\n\n// the standing law of the ledger. Exported so\n// tests (and audits) can hold any state to it.\nfunction violation(state) {\n  const g = state.genesis;\n  let sum = 0;\n  for (const [id, bal] of\n       Object.entries(state.accounts)) {\n    if (!Number.isInteger(bal) || bal < 0)\n      return 'negative-balance:' + id;\n    sum += bal;\n    if (id !== g &&\n        bal < (state.accounts[g] || 0))\n      return 'genesis-humility';\n  }\n  if (sum !== state.minted - state.burned)\n    return 'conservation';\n  return null;\n}\n\nfunction createLedger(genesis) {\n  genesis = genesis || 'genesis';\n\n  const initial = {\n    genesis,\n    accounts: { [genesis]: 0 },\n    minted: 0, burned: 0,\n    refs: {},          // consumed backing refs\n  };\n\n  function evolve(state, ev) {\n    const acc = { ...state.accounts };\n    if (ev.type === 'TokensMinted') {\n      acc[ev.account] =\n        (acc[ev.account] || 0) + ev.amount;\n      return { ...state, accounts: acc,\n        minted: state.minted + ev.amount,\n        refs: { ...state.refs,\n          [ev.backing.ref]: true } };\n    }\n    if (ev.type === 'Transferred') {\n      acc[ev.from] = acc[ev.from] - ev.amount;\n      acc[ev.to] =\n        (acc[ev.to] || 0) + ev.amount;\n      return { ...state, accounts: acc };\n    }\n    if (ev.type === 'Burned') {\n      acc[ev.account] =\n        acc[ev.account] - ev.amount;\n      return { ...state, accounts: acc,\n        burned: state.burned + ev.amount };\n    }\n    return state;\n  }\n\n  // fold candidates on a scratch copy; any\n  // broken law turns the WHOLE action into a\n  // single Rejected fact. Never throws.\n  function guarded(state, events) {\n    let s = state;\n    for (const e of events) s = evolve(s, e);\n    const law = violation(s);\n    return law\n      ? [{ type: 'Rejected', reason: law }]\n      : events;\n  }\n\n  function decide(state, action) {\n    const a = action || {};\n\n    if (a.type === 'RecordPurchase') {\n      if (!a.account || !a.source || !a.ref)\n        return [{ type: 'Rejected',\n          reason: 'purchase-incomplete' }];\n      if (a.account === genesis)\n        return [{ type: 'Rejected',\n          reason: 'genesis-cannot-mint' }];\n      if (!posInt(a.cents))\n        return [{ type: 'Rejected',\n          reason: 'bad-cents', got: a.cents }];\n      if (state.refs[a.ref])\n        return [{ type: 'Rejected',\n          reason: 'ref-already-minted',\n          ref: a.ref }];\n      return guarded(state, [{\n        type: 'TokensMinted',\n        account: a.account,\n        amount: a.cents * RATE,\n        backing: { cents: a.cents,\n          source: a.source, ref: a.ref },\n      }]);\n    }\n\n    if (a.type === 'Transfer') {\n      if (!posInt(a.amount) || !a.from ||\n          !a.to || a.from === a.to)\n        return [{ type: 'Rejected',\n          reason: 'bad-transfer' }];\n      if ((state.accounts[a.from] || 0) <\n          a.amount)\n        return [{ type: 'Rejected',\n          reason: 'insufficient',\n          from: a.from }];\n      return guarded(state, [{\n        type: 'Transferred', from: a.from,\n        to: a.to, amount: a.amount }]);\n    }\n\n    if (a.type === 'Burn') {\n      if (!posInt(a.amount) ||\n          (state.accounts[a.account] || 0)\n            < a.amount)\n        return [{ type: 'Rejected',\n          reason: 'bad-burn' }];\n      return guarded(state, [{\n        type: 'Burned', account: a.account,\n        amount: a.amount,\n        why: a.why || '' }]);\n    }\n\n    return [];\n  }\n\n  function react(state, ev) {\n    if (ev.type === 'TokensMinted')\n      return [{ type: 'notify',\n        text: ev.amount + ' tokens -> ' +\n          ev.account + ' (backed by ' +\n          ev.backing.source + ' ' +\n          ev.backing.ref + ')' }];\n    return [];\n  }\n\n  function render(state) {\n    const V = require('./view');\n    const rows = Object.entries(state.accounts)\n      .sort((a, b) => b[1] - a[1])\n      .map(([id, bal]) => V.text(\n        (id === genesis ? id + ' *' : id)\n          .padEnd(14) +\n        String(bal).padStart(10)));\n    return V.toAscii(V.box('ledger',\n      ...rows,\n      V.text(''),\n      V.text('minted ' + state.minted +\n        '  burned ' + state.burned),\n      V.text('* genesis (must stay poorest)')));\n  }\n\n  function resolve(state, uri) {\n    const f = uri\n      .replace(/^ledger:\\/\\//, '')\n      .replace(/^.*\\/ledger\\/[^/]+\\//, '');\n    if (f === 'supply')\n      return state.minted - state.burned;\n    if (f.startsWith('balance/'))\n      return state.accounts[\n        f.slice('balance/'.length)] || 0;\n    throw new Error('no such uri: ' + uri);\n  }\n\n  return { initial, decide, evolve, react,\n    render, resolve };\n}\n\nmodule.exports = {\n  createLedger, violation, RATE,\n  machine: createLedger('genesis'),\n};\n","llm":"/* ==============================================\n * LLM \u2014 senses as DEPENDENCIES (<=50 col house)\n * ----------------------------------------------\n * Michael's rule: dependencies are the things\n * that cause side effects. So the assistant's\n * three senses \u2014 an LLM (Large Language\n * Model), a speech listener, and a way to ask\n * the human a yes/no \u2014 are modeled exactly\n * like deps.js models the world:\n *\n *   unimplementedSenses()  every call THROWS\n *                          (the test default)\n *   scriptedSenses(script) deterministic\n *                          doubles for tests\n *   browserSenses(w)       Chrome's on-device\n *                          Prompt API (Gemini\n *                          Nano) + Web Speech\n *\n * Swapping this ONE bag is what moves the\n * assistant between planets: browser today, a\n * CLI tomorrow (readline listener + remote\n * LLM), a server the day after. The archetype\n * (assistant.js) never knows which world it\n * woke up in \u2014 same doctrine as sync.js.\n *\n * Every face has the same shape:\n *   llm:    detect() -> bool | Promise<bool>\n *           generate({system, prompt})\n *             -> Promise<string>\n *   speech: detect() -> bool\n *           listen() -> Promise<string>\n *   ask:    confirm(text) -> Promise<bool>\n * ============================================ */\n\n'use strict';\n\nfunction unimplemented(label) {\n  return () => {\n    throw new Error(\n      'unimplemented sense: ' + label);\n  };\n}\n\n// the safe default: a test that reaches an\n// unwired sense dies loudly, never silently.\nfunction unimplementedSenses() {\n  return {\n    llm: {\n      detect: () => false,\n      generate: unimplemented('llm.generate'),\n    },\n    speech: {\n      detect: () => false,\n      listen: unimplemented('speech.listen'),\n    },\n    ask: {\n      confirm: unimplemented('ask.confirm'),\n    },\n  };\n}\n\n/* scripted doubles. script = {\n *   llm: true, speech: true, yes: true,\n *   phrases: ['nine times six'],   // heard\n *   replies: ['{\"target\":...}'],   // llm out\n * } \u2014 arrays are consumed in order.\n */\nfunction scriptedSenses(script) {\n  const s = script || {};\n  const phrases = (s.phrases || []).slice();\n  const replies = (s.replies || []).slice();\n  return {\n    llm: {\n      detect: () => !!s.llm,\n      generate: async () =>\n        replies.length\n          ? replies.shift()\n          : '(silence)',\n    },\n    speech: {\n      detect: () => !!s.speech,\n      listen: async () =>\n        phrases.length\n          ? phrases.shift() : '',\n    },\n    ask: {\n      confirm: async () => !!s.yes,\n    },\n  };\n}\n\n/* the live browser world. `w` = window.\n * - LLM: Chrome's built-in Prompt API\n *   (window.LanguageModel, Gemini Nano,\n *   on-device). detect() is honest: it asks\n *   availability(), it does not guess.\n * - speech: Web Speech API, one utterance\n *   per listen() call.\n * - ask: confirm() \u2014 primitive but honest.\n */\nfunction browserSenses(w) {\n  return {\n    llm: {\n      detect: async () => {\n        try {\n          if (!w.LanguageModel) return false;\n          const a = await\n            w.LanguageModel.availability();\n          return a !== 'unavailable';\n        } catch (e) { return false; }\n      },\n      generate: async ({ system, prompt }) => {\n        const s = await w.LanguageModel.create(\n          { initialPrompts: [{ role: 'system',\n            content: system }] });\n        try { return await s.prompt(prompt); }\n        finally { s.destroy && s.destroy(); }\n      },\n    },\n    speech: {\n      detect: () =>\n        !!(w.SpeechRecognition ||\n           w.webkitSpeechRecognition),\n      listen: () => new Promise((res, rej) => {\n        const R = w.SpeechRecognition ||\n          w.webkitSpeechRecognition;\n        const r = new R();\n        r.lang = 'en-US';\n        r.onresult = ev => res(\n          ev.results[0][0].transcript);\n        r.onerror = ev =>\n          rej(new Error(ev.error));\n        r.start();\n      }),\n    },\n    ask: {\n      confirm: async text => w.confirm(text),\n    },\n  };\n}\n\nmodule.exports = {\n  unimplementedSenses,\n  scriptedSenses,\n  browserSenses,\n};\n","assistant":"/* ==============================================\n * ARCHETYPE: assistant       (<=50 col house)\n * ----------------------------------------------\n * \"Talk to the calculator.\" The whole feature\n * is a fold + a bag of senses (llm.js):\n *\n *   MOUNT           the page/CLI woke up\n *    -> probe       do we HAVE speech + llm?\n *    -> offer       ask the human politely\n *    -> listen      one utterance\n *    -> interpret   LLM: words -> a PLAN\n *    -> perform     dispatch real actions\n *    -> listen      ... loop while enabled\n *\n * Every stage lands as a FACT, including the\n * refusals: no LLM on this planet is\n * OfferDeclined, LLM word-salad is Rejected.\n * Replay the log and you replay the whole\n * conversation with the machine.\n *\n * The LLM is fed (by the interpret PROCESSOR)\n * a catalog of live state + legal actions \u2014\n * world.describe() \u2014 and must answer STRICT\n * JSON: {\"target\": \"...\", \"actions\": [...]}.\n * decide() validates that plan against the\n * allowed target list; the model gets no\n * authority the fold does not grant.\n *\n * Browser vs CLI is ONLY a senses swap\n * (llm.js): Chrome's on-device Gemini Nano\n * here, readline + any remote model there.\n * The archetype cannot tell the difference.\n *\n * ACES letters, owned by this archetype:\n *   ACTION  MOUNT|CAPS|ANSWER|HEARD|\n *           INTERPRETED|FAILED|STOP\n *   EVENT   Mounted|CapsProbed|OfferMade|\n *           OfferDeclined|Enabled|Disabled|\n *           Heard|Planned|Rejected\n *   EFFECT  probe|offer|listen|interpret|\n *           perform\n *   STATE   {phase, caps, heard, plans}\n * ============================================ */\n\n'use strict';\n\n// phases: idle -> probing -> offered ->\n//         on | off  (off is terminal-polite)\nfunction createAssistant(opts) {\n  opts = opts || {};\n  const targets = opts.targets ||\n    ['calc', 'store', 'nav', 'ledger'];\n\n  const planShape = p =>\n    p && targets.includes(p.target) &&\n    Array.isArray(p.actions) &&\n    p.actions.length > 0 &&\n    p.actions.every(a => a &&\n      typeof a.type === 'string');\n\n  return {\n    initial: {\n      phase: 'idle',\n      caps: { speech: false, llm: false },\n      heard: [], plans: 0,\n    },\n\n    decide(state, action) {\n      const a = action || {};\n      if (a.type === 'MOUNT')\n        return state.phase === 'idle'\n          ? [{ type: 'Mounted' }] : [];\n      if (a.type === 'CAPS') {\n        const both = a.speech && a.llm;\n        return [both\n          ? { type: 'OfferMade',\n              caps: { speech: true,\n                llm: true } }\n          : { type: 'OfferDeclined',\n              reason: !a.llm\n                ? 'no-llm-on-this-planet'\n                : 'no-speech-on-this-planet',\n              caps: { speech: !!a.speech,\n                llm: !!a.llm } }];\n      }\n      if (a.type === 'ANSWER')\n        return [a.yes\n          ? { type: 'Enabled' }\n          : { type: 'Disabled',\n              why: 'declined' }];\n      if (a.type === 'HEARD')\n        return state.phase !== 'on' ? [] :\n          a.text && a.text.trim()\n            ? [{ type: 'Heard',\n                text: a.text.trim() }]\n            : [];         // silence ends loop\n      if (a.type === 'INTERPRETED')\n        return planShape(a.plan)\n          ? [{ type: 'Planned',\n              plan: a.plan }]\n          : [{ type: 'Rejected',\n              reason: 'bad-plan',\n              got: a.plan }];\n      if (a.type === 'FAILED')\n        return [{ type: 'Rejected',\n          reason: a.stage + '-failed',\n          why: String(a.why) }];\n      if (a.type === 'STOP')\n        return state.phase === 'on'\n          ? [{ type: 'Disabled',\n              why: 'stopped' }] : [];\n      return [];\n    },\n\n    evolve(state, ev) {\n      if (ev.type === 'Mounted')\n        return { ...state, phase: 'probing' };\n      if (ev.type === 'OfferMade')\n        return { ...state, phase: 'offered',\n          caps: ev.caps };\n      if (ev.type === 'OfferDeclined')\n        return { ...state, phase: 'off',\n          caps: ev.caps };\n      if (ev.type === 'Enabled')\n        return { ...state, phase: 'on' };\n      if (ev.type === 'Disabled')\n        return { ...state, phase: 'off' };\n      if (ev.type === 'Heard')\n        return { ...state, heard:\n          [...state.heard, ev.text] };\n      if (ev.type === 'Planned')\n        return { ...state,\n          plans: state.plans + 1 };\n      return state;\n    },\n\n    // every effect here is served by a senses\n    // processor; results come back as ACTIONS.\n    react(state, ev) {\n      if (ev.type === 'Mounted')\n        return [{ type: 'probe' }];\n      if (ev.type === 'OfferMade')\n        return [{ type: 'offer' }];\n      if (ev.type === 'Enabled')\n        return [{ type: 'listen' }];\n      if (ev.type === 'Heard')\n        return [{ type: 'interpret',\n          text: ev.text }];\n      if (ev.type === 'Planned')\n        return [{ type: 'perform',\n          plan: ev.plan },\n          { type: 'listen' }];\n      if (ev.type === 'Rejected' &&\n          state.phase === 'on')\n        return [{ type: 'listen' }];\n      return [];\n    },\n\n    resolve(state, uri) {\n      const f = uri\n        .replace(/^assistant:\\/\\//, '');\n      if (f === 'phase') return state.phase;\n      if (f === 'heard') return state.heard;\n      throw new Error('no such uri: ' + uri);\n    },\n\n    render(state) {\n      const V = require('./view');\n      return V.toAscii(V.box('assistant',\n        V.text('phase  ' + state.phase),\n        V.text('speech ' +\n          state.caps.speech),\n        V.text('llm    ' + state.caps.llm),\n        V.text('heard  ' +\n          state.heard.length +\n          '  plans ' + state.plans)));\n    },\n  };\n}\n\n/* processorsFor(senses, world) \u2014 the bridge.\n * senses: llm.js bag. world: {\n *   describe() -> string   live state + the\n *                          action catalog\n *   perform(plan)          dispatch into the\n *                          target runtime\n *   offerText              the question\n * }\n * Results re-enter as actions via api\n * .dispatch \u2014 the runtime hands processors\n * that api as their 2nd argument (core.js).\n */\nfunction processorsFor(senses, world) {\n  const back = (api, action) =>\n    api.dispatch(action);\n  return {\n    probe: async (fx, api) => {\n      const [sp, lm] = await Promise.all([\n        senses.speech.detect(),\n        senses.llm.detect()]);\n      await back(api, { type: 'CAPS',\n        speech: !!sp, llm: !!lm });\n      return [];\n    },\n    offer: async (fx, api) => {\n      const yes = await senses.ask.confirm(\n        world.offerText ||\n        'Talk to the arcade with your ' +\n        'voice? (on-device model)');\n      await back(api,\n        { type: 'ANSWER', yes });\n      return [];\n    },\n    listen: async (fx, api) => {\n      try {\n        const text =\n          await senses.speech.listen();\n        await back(api,\n          { type: 'HEARD', text });\n      } catch (e) {\n        await back(api, { type: 'FAILED',\n          stage: 'listen', why: e.message });\n      }\n      return [];\n    },\n    interpret: async (fx, api) => {\n      try {\n        const raw = await\n          senses.llm.generate({\n            system: world.describe(),\n            prompt: fx.text });\n        const m = /\\{[\\s\\S]*\\}/.exec(raw);\n        await back(api, {\n          type: 'INTERPRETED',\n          plan: m ? JSON.parse(m[0]) : null,\n        });\n      } catch (e) {\n        await back(api, { type: 'FAILED',\n          stage: 'interpret',\n          why: e.message });\n      }\n      return [];\n    },\n    perform: async fx => {\n      await world.perform(fx.plan);\n      return [];\n    },\n  };\n}\n\nmodule.exports =\n  { createAssistant, processorsFor };\n","package.json":{"name":"aces","version":"1.0.0","private":true,"description":"ACES event-sourced engine. This version field is the source of truth for the event schema (see version.js).","main":"core.js","scripts":{"test":"node core.test.js && node net.test.js && node conversation.test.js && node version.test.js && node platform.test.js && node view.test.js && node parse.test.js && node nav.test.js && node ledger.test.js && node assistant.test.js"}}}</script>
+<script>
+'use strict';
+
+/* -- a require() the size of a haiku ---------
+ * Fetch every module's source, then evaluate
+ * lazily, memoized, exactly like node would.
+ */
+const SRC = {}, CACHE = {};
+function req(path) {
+  const n = path.replace(/^\.\//, '');
+  if (CACHE[n]) return CACHE[n].exports;
+  const m = CACHE[n] = { exports: {} };
+  new Function(
+    'module', 'exports', 'require',
+    SRC[n])(m, m.exports, req);
+  return m.exports;
+}
+
+const $ = id => document.getElementById(id);
+function toast(text) {
+  const t = $('toast');
+  t.textContent = text;
+  t.style.opacity = 1;
+  clearTimeout(toast.tid);
+  toast.tid = setTimeout(
+    () => t.style.opacity = 0, 2600);
+}
+
+async function boot() {
+  const mods = ['core', 'calculator', 'ui',
+    'store', 'store-ui', 'platform',
+    'version', 'view', 'parse', 'nav',
+    'ledger', 'llm', 'assistant'];
+  // standalone builds (deploy/build-artifact
+  // .js) inline the sources + package.json;
+  // the hosted site fetches its own files.
+  const inline = window.__ACES_SRC__;
+  let pkg;
+  if (inline) {
+    for (const n of mods)
+      SRC[n] = inline[n];
+    pkg = inline['package.json'];
+  } else {
+    await Promise.all(mods.map(async n => {
+      const r = await fetch(n + '.js');
+      SRC[n] = await r.text();
+    }));
+    pkg = await (
+      await fetch('package.json')).json();
+  }
+
+  const { createRuntime } = req('core');
+  const { versioned, defineSchema } =
+    req('version');
+  const platform = req('platform');
+  const navMod = req('nav');
+
+  const schema =
+    defineSchema({ version: pkg.version });
+  $('ver').textContent =
+    'v' + pkg.version + ' · schema ' +
+    schema.tag;
+  $('planet').textContent =
+    platform.detect() + ' → ' +
+    platform.recommend().use;
+
+  /* -- effect PROCESSORS for THIS planet ------
+   * The archetypes ask; the browser answers.
+   * speak is gated by the nav archetype's
+   * folded sound setting — a setting is
+   * state, so muting is replayable history.
+   */
+  const procs = {
+    speak: async fx => {
+      const s = nav.getState().settings;
+      if (s.sound &&
+          'speechSynthesis' in window)
+        speechSynthesis.speak(
+          new SpeechSynthesisUtterance(
+            fx.text));
+      return [];
+    },
+    notify: async fx => {
+      toast(fx.text);
+      return [];
+    },
+    // nav's react() PRINTS the route here:
+    hash: fx => {
+      history.replaceState(null, '',
+        '#' + fx.text);
+      return [];
+    },
+  };
+
+  const nav = createRuntime(
+    versioned(navMod.machine, schema),
+    { processors: procs, nodeId: 'web' });
+  const calc = createRuntime(
+    versioned(req('calculator').machine,
+      schema),
+    { processors: procs, nodeId: 'web' });
+  const store = createRuntime(
+    versioned(req('store').machine, schema),
+    { processors: procs, nodeId: 'web' });
+  const ledger = createRuntime(
+    versioned(req('ledger')
+      .createLedger('michael'), schema),
+    { processors: procs, nodeId: 'web' });
+
+  // the Shopify emoji buyer's seed, replayed
+  // into the browser ledger as a fact:
+  await ledger.dispatch({
+    type: 'RecordPurchase',
+    account: 'emoji-buyer', cents: 1428,
+    source: 'shopify',
+    ref: 'shopify:order-1001' });
+
+  // -- the event tape -----------------------
+  const tape = $('tape');
+  function tapeLine(who, e) {
+    const meta = { ...e };
+    delete meta._seq; delete meta._at;
+    delete meta._id; delete meta._origin;
+    const div =
+      document.createElement('div');
+    div.innerHTML =
+      '[' + who + '] <span class="v">' +
+      (e.v || '·') + '</span> ';
+    div.append(JSON.stringify(meta));
+    tape.prepend(div);
+    while (tape.childNodes.length > 200)
+      tape.lastChild.remove();
+  }
+  const wire = (rt, who) =>
+    rt.subscribe(m => {
+      if (m.t === 'event')
+        tapeLine(who, m.e);
+      render();
+    });
+  wire(calc, 'calc');
+  wire(store, 'store');
+  wire(ledger, 'ledger');
+  wire(nav, 'nav');
+
+  // -- screens ------------------------------
+  const KEYS = [
+    ['7', '8', '9', '/'],
+    ['4', '5', '6', '*'],
+    ['1', '2', '3', '-'],
+    ['0', '.', '=', '+'],
+    ['(', ')', '^', 'C'],
+    ['<'],
+  ];
+  const SKUS = ['APL', 'MLK', 'EGG', 'BRD'];
+  const key = k =>
+    calc.dispatch({ type: 'KEY', key: k });
+  const el = t =>
+    document.createElement(t);
+  const btn = (label, fn, cls) => {
+    const b = el('button');
+    if (cls) b.className = cls;
+    b.textContent = label;
+    b.onclick = fn;
+    return b;
+  };
+  const actRow = (...bs) => {
+    const d = el('div');
+    d.className = 'acts';
+    bs.forEach(b => d.append(b));
+    return d;
+  };
+
+  let seededRefs = 1;   // demo purchase ids
+
+  const SCREENS = {
+    calc: {
+      screen: () => calc.render(),
+      controls() {
+        const pad = el('div');
+        pad.className = 'pad';
+        for (const row of KEYS)
+          for (const k of row)
+            pad.append(btn(
+              k === '<' ? '< back' : k,
+              () => key(k)));
+        return pad;
+      },
+    },
+    store: {
+      screen: () => store.render(),
+      controls() {
+        const w = el('div');
+        w.append(
+          actRow(...SKUS.map(s =>
+            btn('+ ' + s, () =>
+              store.dispatch({
+                type: 'AddToCart',
+                sku: s }), 'act'))),
+          actRow(...SKUS.map(s =>
+            btn('− ' + s, () =>
+              store.dispatch({
+                type: 'RemoveFromCart',
+                sku: s }), 'act'))),
+          actRow(btn('CHECKOUT ✓', () =>
+            store.dispatch(
+              { type: 'Checkout' }),
+            'act')));
+        return w;
+      },
+    },
+    ledger: {
+      screen: () => ledger.render(),
+      controls() {
+        const w = el('div');
+        w.append(
+          actRow(
+            btn('simulate $5 purchase',
+              () => ledger.dispatch({
+                type: 'RecordPurchase',
+                account: 'player-' +
+                  (1 + seededRefs % 3),
+                cents: 500,
+                source: 'stripe-demo',
+                ref: 'demo:' +
+                  (++seededRefs),
+              }), 'act'),
+            btn('tip genesis 100', () =>
+              ledger.dispatch({
+                type: 'Transfer',
+                from: 'emoji-buyer',
+                to: 'michael',
+                amount: 100 }), 'act')),
+          actRow(
+            btn('try to enrich genesis',
+              () => ledger.dispatch({
+                type: 'Transfer',
+                from: 'emoji-buyer',
+                to: 'michael',
+                amount: 142000 }), 'act'),
+            btn('burn 50 (play game)',
+              () => ledger.dispatch({
+                type: 'Burn',
+                account: 'emoji-buyer',
+                amount: 50,
+                why: 'game' }), 'act')));
+        const p = el('p');
+        p.style.color = 'var(--dim)';
+        p.append('Rejections land on the ' +
+          'tape as facts. Genesis (*) can ' +
+          'never out-hold a player.');
+        w.append(p);
+        return w;
+      },
+    },
+    platform: {
+      screen: () =>
+        platform.report() + '\n\n' +
+        'recommend() → ' + JSON.stringify(
+          platform.recommend(), null, 2) +
+        '\n\nthe closed enum (' +
+        platform.leaves().length +
+        ' leaves):\n  ' +
+        platform.leaves().join('\n  '),
+      controls: () => el('div'),
+    },
+    settings: {
+      screen: () => nav.render(),
+      controls() {
+        const set = (k, v) => () =>
+          nav.dispatch({ type: 'SET',
+            key: k, value: v });
+        const w = el('div');
+        w.append(
+          actRow(
+            btn('glyph sm',
+              set('glyph', 'sm'), 'act'),
+            btn('glyph md',
+              set('glyph', 'md'), 'act'),
+            btn('glyph lg',
+              set('glyph', 'lg'), 'act')),
+          actRow(
+            btn('sound on',
+              set('sound', true), 'act'),
+            btn('sound off',
+              set('sound', false), 'act'),
+            btn('bogus setting (watch it ' +
+              'refuse)', set('crt', 'on'),
+              'act')));
+        return w;
+      },
+    },
+  };
+
+  // -- tab strip = the nav archetype --------
+  const goto = to =>
+    nav.dispatch({ type: 'NAVIGATE', to });
+  const navBar = $('tabs');
+  for (const name of navMod.SCREENS) {
+    const b = btn(name.toUpperCase(),
+      () => goto(name));
+    b.dataset.tab = name;
+    navBar.append(b);
+  }
+  function mount() {
+    const active = nav.getState().screen;
+    for (const b of navBar.children)
+      b.setAttribute('aria-selected',
+        b.dataset.tab === active);
+    $('controls').replaceChildren(
+      SCREENS[active].controls());
+  }
+  let lastScreen = '';
+  function render() {
+    const st = nav.getState();
+    if (st.screen !== lastScreen) {
+      lastScreen = st.screen;
+      mount();
+    }
+    document.body.className =
+      'glyph-' + st.settings.glyph;
+    $('screen').textContent =
+      SCREENS[st.screen].screen();
+  }
+
+  // deep links + manual hash edits: the SAME
+  // route spec parses them; junk becomes a
+  // Rejected fact on the tape, not a crash.
+  const fromHash = () => {
+    const h = location.hash
+      .replace(/^#\/?/, '');
+    if (h) goto(h);
+  };
+  addEventListener('hashchange', fromHash);
+
+  // -- keyboard drives the calculator -------
+  addEventListener('keydown', ev => {
+    if (nav.getState().screen !== 'calc')
+      return;
+    const map = {
+      Enter: '=', Backspace: '<',
+      Escape: 'C', c: 'C',
+    };
+    if (map[ev.key]) {
+      key(map[ev.key]); return;
+    }
+    if ('0123456789.+-*/^()='
+        .includes(ev.key) && ev.key)
+      key(ev.key);
+  });
+
+  // -- replay: state is only a cache --------
+  $('replay').onclick = () => {
+    const n = calc.getLog().length +
+      store.getLog().length +
+      ledger.getLog().length +
+      nav.getLog().length;
+    calc.replay(calc.getLog());
+    store.replay(store.getLog());
+    ledger.replay(ledger.getLog());
+    nav.replay(nav.getLog());
+    lastScreen = '';
+    render();
+    toast('rebuilt state from ' + n +
+      ' facts — same answer, always');
+  };
+  $('back').onclick = () =>
+    nav.dispatch({ type: 'BACK' });
+
+  /* -- the voice assistant ------------------
+   * Senses (llm.js) are the dependency that
+   * causes the side effects: on-device
+   * Gemini Nano (Chrome Prompt API) + Web
+   * Speech here; a CLI swaps the bag and the
+   * archetype never notices. No LLM on this
+   * planet? OfferDeclined lands on the tape
+   * as a fact and nobody is nagged.
+   */
+  const A = req('assistant');
+  const senses =
+    req('llm').browserSenses(window);
+  const RTS = { calc, store, nav, ledger };
+  const world = {
+    offerText: 'Talk to the arcade with ' +
+      'your voice? Uses the on-device ' +
+      'model; nothing leaves the page.',
+    describe: () => [
+      'You drive an event-sourced arcade.',
+      'Answer ONLY strict JSON:',
+      '{"target":t,"actions":[...]}',
+      'targets and their actions:',
+      'calc: {"type":"KEY","key":k} where',
+      '  k in 0-9 . + - * / ^ ( ) = C <',
+      '  display now: ' +
+        calc.getState().display,
+      'store: {"type":"AddToCart","sku":s}|',
+      ' {"type":"RemoveFromCart","sku":s}|',
+      ' {"type":"Checkout"} sku in APL MLK',
+      ' EGG BRD',
+      'nav: {"type":"NAVIGATE","to":x} x in '
+        + navMod.SCREENS.join(' '),
+      'ledger: {"type":"Transfer","from":a,',
+      ' "to":b,"amount":n} accounts: ' +
+        Object.keys(ledger.getState()
+          .accounts).join(' '),
+    ].join('\n'),
+    perform: async plan => {
+      const rt = RTS[plan.target];
+      for (const act of plan.actions)
+        await rt.dispatch(act);
+    },
+  };
+  const assistant = createRuntime(
+    versioned(A.createAssistant(
+      { targets: Object.keys(RTS) }),
+      schema),
+    { processors: A.processorsFor(
+        senses, world),
+      nodeId: 'web' });
+  assistant.subscribe(m => {
+    if (m.t === 'event')
+      tapeLine('voice', m.e);
+    $('voice').textContent = 'voice ' +
+      assistant.getState().phase;
+  });
+
+  mount(); render(); fromHash();
+  assistant.dispatch({ type: 'MOUNT' });
+}
+
+boot().catch(e => {
+  $('screen').textContent =
+    'BOOT FAILURE\n' + e.stack;
+});
+</script>
+</body>
+</html>
