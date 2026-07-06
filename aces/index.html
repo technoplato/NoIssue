@@ -5,18 +5,24 @@
   There is NO build step and NO bundle. This
   page fetches the very same CommonJS modules
   that `node test.js` runs (core.js,
-  calculator.js, store.js, platform.js,
-  version.js ...) and wires them with a tiny
-  require() shim below. The site you are on
-  serves its own source: view-source is the
-  real program.
+  calculator.js, store.js, nav.js, ledger.js,
+  platform.js, parse.js, version.js ...) and
+  wires them with a tiny require() shim below.
+  The site serves its own source: view-source
+  is the real program.
 
   Isomorphism, demonstrated:
   - same decide/evolve/react as the CLI
   - the 'speak' EFFECT runs on the browser's
-    TTS (Text To Speech) processor here, and
-    on a different processor on a server —
-    the logic never knows the difference.
+    TTS (Text To Speech) processor here — and
+    is GATED by the nav archetype's folded
+    sound setting.
+  - NAVIGATION IS STATE: the tab strip is the
+    nav archetype; the route table is a
+    parser-printer (parse.js). decide()
+    validates a destination by PARSING it;
+    react() PRINTS state into location.hash.
+    Deep links replay the same road inward.
   - REPLAY drops state and refolds the log,
     live, because state is only a cache.
 ============================================= -->
@@ -41,7 +47,9 @@
       Consolas, monospace;
     font-size: 15px; line-height: 1.35;
   }
-  /* CRT scanlines + vignette */
+  body.glyph-sm { font-size: 12px; }
+  body.glyph-lg { font-size: 19px; }
+  /* CRT scanlines */
   body::after {
     content: ""; position: fixed; inset: 0;
     pointer-events: none;
@@ -137,19 +145,23 @@
     <div class="acts">
       <button class="act" id="replay">
         ⟲ drop state + replay log</button>
+      <button class="act" id="back">
+        ← back (a fact too)</button>
     </div>
     <pre id="tape"></pre>
   </aside>
 </main>
 <footer>
   Every keypress becomes a fact; state is a
-  fold of the tape. Source (unbundled, this
-  site serves it):
+  fold of the tape; the address bar is printed
+  by the same parser that validates it.
+  Source (unbundled, this site serves it):
   <a href="core.js">core.js</a> ·
+  <a href="parse.js">parse.js</a> ·
+  <a href="nav.js">nav.js</a> ·
+  <a href="ledger.js">ledger.js</a> ·
   <a href="calculator.js">calculator.js</a> ·
   <a href="store.js">store.js</a> ·
-  <a href="version.js">version.js</a> ·
-  <a href="platform.js">platform.js</a> ·
   <a href="https://github.com/technoplato/NoIssue">repo</a>
 </footer>
 <div id="toast" role="status"></div>
@@ -185,21 +197,32 @@ function toast(text) {
 async function boot() {
   const mods = ['core', 'calculator', 'ui',
     'store', 'store-ui', 'platform',
-    'version', 'view'];
-  await Promise.all(mods.map(async n => {
-    const r = await fetch(n + '.js');
-    SRC[n] = await r.text();
-  }));
-  const pkg = await (
-    await fetch('package.json')).json();
+    'version', 'view', 'parse', 'nav',
+    'ledger'];
+  // standalone builds (deploy/build-artifact
+  // .js) inline the sources + package.json;
+  // the hosted site fetches its own files.
+  const inline = window.__ACES_SRC__;
+  let pkg;
+  if (inline) {
+    for (const n of mods)
+      SRC[n] = inline[n];
+    pkg = inline['package.json'];
+  } else {
+    await Promise.all(mods.map(async n => {
+      const r = await fetch(n + '.js');
+      SRC[n] = await r.text();
+    }));
+    pkg = await (
+      await fetch('package.json')).json();
+  }
 
   const { createRuntime } = req('core');
   const { versioned, defineSchema } =
     req('version');
   const platform = req('platform');
+  const navMod = req('nav');
 
-  // one schema, straight from package.json —
-  // the single source of truth, in production.
   const schema =
     defineSchema({ version: pkg.version });
   $('ver').textContent =
@@ -211,12 +234,15 @@ async function boot() {
 
   /* -- effect PROCESSORS for THIS planet ------
    * The archetypes ask; the browser answers.
-   * Swap these for server processors and the
-   * same machines run there untouched.
+   * speak is gated by the nav archetype's
+   * folded sound setting — a setting is
+   * state, so muting is replayable history.
    */
   const procs = {
     speak: async fx => {
-      if ('speechSynthesis' in window)
+      const s = nav.getState().settings;
+      if (s.sound &&
+          'speechSynthesis' in window)
         speechSynthesis.speak(
           new SpeechSynthesisUtterance(
             fx.text));
@@ -226,8 +252,17 @@ async function boot() {
       toast(fx.text);
       return [];
     },
+    // nav's react() PRINTS the route here:
+    hash: fx => {
+      history.replaceState(null, '',
+        '#' + fx.text);
+      return [];
+    },
   };
 
+  const nav = createRuntime(
+    versioned(navMod.machine, schema),
+    { processors: procs, nodeId: 'web' });
   const calc = createRuntime(
     versioned(req('calculator').machine,
       schema),
@@ -235,6 +270,18 @@ async function boot() {
   const store = createRuntime(
     versioned(req('store').machine, schema),
     { processors: procs, nodeId: 'web' });
+  const ledger = createRuntime(
+    versioned(req('ledger')
+      .createLedger('michael'), schema),
+    { processors: procs, nodeId: 'web' });
+
+  // the Shopify emoji buyer's seed, replayed
+  // into the browser ledger as a fact:
+  await ledger.dispatch({
+    type: 'RecordPurchase',
+    account: 'emoji-buyer', cents: 1428,
+    source: 'shopify',
+    ref: 'shopify:order-1001' });
 
   // -- the event tape -----------------------
   const tape = $('tape');
@@ -252,18 +299,18 @@ async function boot() {
     while (tape.childNodes.length > 200)
       tape.lastChild.remove();
   }
-  calc.subscribe(m => {
-    if (m.t === 'event')
-      tapeLine('calc', m.e);
-    render();
-  });
-  store.subscribe(m => {
-    if (m.t === 'event')
-      tapeLine('store', m.e);
-    render();
-  });
+  const wire = (rt, who) =>
+    rt.subscribe(m => {
+      if (m.t === 'event')
+        tapeLine(who, m.e);
+      render();
+    });
+  wire(calc, 'calc');
+  wire(store, 'store');
+  wire(ledger, 'ledger');
+  wire(nav, 'nav');
 
-  // -- tabs ---------------------------------
+  // -- screens ------------------------------
   const KEYS = [
     ['7', '8', '9', '/'],
     ['4', '5', '6', '*'],
@@ -275,59 +322,101 @@ async function boot() {
   const SKUS = ['APL', 'MLK', 'EGG', 'BRD'];
   const key = k =>
     calc.dispatch({ type: 'KEY', key: k });
+  const el = t =>
+    document.createElement(t);
+  const btn = (label, fn, cls) => {
+    const b = el('button');
+    if (cls) b.className = cls;
+    b.textContent = label;
+    b.onclick = fn;
+    return b;
+  };
+  const actRow = (...bs) => {
+    const d = el('div');
+    d.className = 'acts';
+    bs.forEach(b => d.append(b));
+    return d;
+  };
 
-  const TABS = {
+  let seededRefs = 1;   // demo purchase ids
+
+  const SCREENS = {
     calc: {
       screen: () => calc.render(),
       controls() {
-        const pad =
-          document.createElement('div');
+        const pad = el('div');
         pad.className = 'pad';
         for (const row of KEYS)
-          for (const k of row) {
-            const b = document
-              .createElement('button');
-            b.textContent =
-              k === '<' ? '< back' : k;
-            b.onclick = () => key(k);
-            pad.append(b);
-          }
+          for (const k of row)
+            pad.append(btn(
+              k === '<' ? '< back' : k,
+              () => key(k)));
         return pad;
       },
     },
     store: {
       screen: () => store.render(),
       controls() {
-        const w =
-          document.createElement('div');
-        const mk = (label, action) => {
-          const b = document
-            .createElement('button');
-          b.className = 'act';
-          b.textContent = label;
-          b.onclick = () =>
-            store.dispatch(action);
-          return b;
-        };
-        const r1 =
-          document.createElement('div');
-        r1.className = 'acts';
-        const r2 =
-          document.createElement('div');
-        r2.className = 'acts';
-        for (const s of SKUS) {
-          r1.append(mk('+ ' + s,
-            { type: 'AddToCart', sku: s }));
-          r2.append(mk('− ' + s,
-            { type: 'RemoveFromCart',
-              sku: s }));
-        }
-        const r3 =
-          document.createElement('div');
-        r3.className = 'acts';
-        r3.append(mk('CHECKOUT ✓',
-          { type: 'Checkout' }));
-        w.append(r1, r2, r3);
+        const w = el('div');
+        w.append(
+          actRow(...SKUS.map(s =>
+            btn('+ ' + s, () =>
+              store.dispatch({
+                type: 'AddToCart',
+                sku: s }), 'act'))),
+          actRow(...SKUS.map(s =>
+            btn('− ' + s, () =>
+              store.dispatch({
+                type: 'RemoveFromCart',
+                sku: s }), 'act'))),
+          actRow(btn('CHECKOUT ✓', () =>
+            store.dispatch(
+              { type: 'Checkout' }),
+            'act')));
+        return w;
+      },
+    },
+    ledger: {
+      screen: () => ledger.render(),
+      controls() {
+        const w = el('div');
+        w.append(
+          actRow(
+            btn('simulate $5 purchase',
+              () => ledger.dispatch({
+                type: 'RecordPurchase',
+                account: 'player-' +
+                  (1 + seededRefs % 3),
+                cents: 500,
+                source: 'stripe-demo',
+                ref: 'demo:' +
+                  (++seededRefs),
+              }), 'act'),
+            btn('tip genesis 100', () =>
+              ledger.dispatch({
+                type: 'Transfer',
+                from: 'emoji-buyer',
+                to: 'michael',
+                amount: 100 }), 'act')),
+          actRow(
+            btn('try to enrich genesis',
+              () => ledger.dispatch({
+                type: 'Transfer',
+                from: 'emoji-buyer',
+                to: 'michael',
+                amount: 142000 }), 'act'),
+            btn('burn 50 (play game)',
+              () => ledger.dispatch({
+                type: 'Burn',
+                account: 'emoji-buyer',
+                amount: 50,
+                why: 'game' }), 'act')));
+        const p = el('p');
+        p.style.color = 'var(--dim)';
+        p.append('Rejections land on the ' +
+          'tape as facts. Genesis (*) can ' +
+          'never out-hold a player.');
+        w.append(p);
         return w;
       },
     },
@@ -340,63 +429,112 @@ async function boot() {
         platform.leaves().length +
         ' leaves):\n  ' +
         platform.leaves().join('\n  '),
-      controls: () =>
-        document.createElement('div'),
+      controls: () => el('div'),
+    },
+    settings: {
+      screen: () => nav.render(),
+      controls() {
+        const set = (k, v) => () =>
+          nav.dispatch({ type: 'SET',
+            key: k, value: v });
+        const w = el('div');
+        w.append(
+          actRow(
+            btn('glyph sm',
+              set('glyph', 'sm'), 'act'),
+            btn('glyph md',
+              set('glyph', 'md'), 'act'),
+            btn('glyph lg',
+              set('glyph', 'lg'), 'act')),
+          actRow(
+            btn('sound on',
+              set('sound', true), 'act'),
+            btn('sound off',
+              set('sound', false), 'act'),
+            btn('bogus setting (watch it ' +
+              'refuse)', set('crt', 'on'),
+              'act')));
+        return w;
+      },
     },
   };
-  let active = 'calc';
 
-  const nav = $('tabs');
-  for (const name of Object.keys(TABS)) {
-    const b =
-      document.createElement('button');
-    b.textContent = name.toUpperCase();
-    b.setAttribute('role', 'tab');
-    b.onclick = () => {
-      active = name;
-      mount(); render();
-    };
+  // -- tab strip = the nav archetype --------
+  const goto = to =>
+    nav.dispatch({ type: 'NAVIGATE', to });
+  const navBar = $('tabs');
+  for (const name of navMod.SCREENS) {
+    const b = btn(name.toUpperCase(),
+      () => goto(name));
     b.dataset.tab = name;
-    nav.append(b);
+    navBar.append(b);
   }
   function mount() {
-    for (const b of nav.children)
+    const active = nav.getState().screen;
+    for (const b of navBar.children)
       b.setAttribute('aria-selected',
         b.dataset.tab === active);
-    const c = $('controls');
-    c.replaceChildren(
-      TABS[active].controls());
+    $('controls').replaceChildren(
+      SCREENS[active].controls());
   }
+  let lastScreen = '';
   function render() {
+    const st = nav.getState();
+    if (st.screen !== lastScreen) {
+      lastScreen = st.screen;
+      mount();
+    }
+    document.body.className =
+      'glyph-' + st.settings.glyph;
     $('screen').textContent =
-      TABS[active].screen();
+      SCREENS[st.screen].screen();
   }
+
+  // deep links + manual hash edits: the SAME
+  // route spec parses them; junk becomes a
+  // Rejected fact on the tape, not a crash.
+  const fromHash = () => {
+    const h = location.hash
+      .replace(/^#\/?/, '');
+    if (h) goto(h);
+  };
+  addEventListener('hashchange', fromHash);
 
   // -- keyboard drives the calculator -------
   addEventListener('keydown', ev => {
-    if (active !== 'calc') return;
-    const k = ev.key;
+    if (nav.getState().screen !== 'calc')
+      return;
     const map = {
       Enter: '=', Backspace: '<',
       Escape: 'C', c: 'C',
     };
-    if (map[k]) { key(map[k]); return; }
+    if (map[ev.key]) {
+      key(map[ev.key]); return;
+    }
     if ('0123456789.+-*/^()='
-        .includes(k) && k) key(k);
+        .includes(ev.key) && ev.key)
+      key(ev.key);
   });
 
   // -- replay: state is only a cache --------
   $('replay').onclick = () => {
     const n = calc.getLog().length +
-      store.getLog().length;
+      store.getLog().length +
+      ledger.getLog().length +
+      nav.getLog().length;
     calc.replay(calc.getLog());
     store.replay(store.getLog());
+    ledger.replay(ledger.getLog());
+    nav.replay(nav.getLog());
+    lastScreen = '';
     render();
     toast('rebuilt state from ' + n +
       ' facts — same answer, always');
   };
+  $('back').onclick = () =>
+    nav.dispatch({ type: 'BACK' });
 
-  mount(); render();
+  mount(); render(); fromHash();
 }
 
 boot().catch(e => {
