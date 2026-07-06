@@ -41,9 +41,9 @@ Honest status — the full breakdown, with the
 | Token ledger | arcade → LEDGER | ⚠️ in-memory only |
 | Voice assistant | arcade → voice chip | ⚠️ needs on-device LLM; else `off` |
 | InstantDB sync | `aces/sync.js` | ⚠️ adapter ready, **not wired live** |
-| Pear / Holepunch P2P | `aces/pear.js` | ❌ shape only |
-| Real payments (Stripe/Solana/x402) | — | ❌ none yet |
-| Solana contract | [`aces/ledger.solana.md`](aces/ledger.solana.md) | ❌ designed, not written |
+| Pear / Holepunch P2P | `aces/pear.live.js` | ⚠️ real hypercore replication proven; DHT needs a UDP host |
+| Stripe payments (buy tokens) | [`aces/pay.stripe.md`](aces/pay.stripe.md) | ⚠️ built + tested; needs a live key + server |
+| Solana / x402 rails | [`aces/ledger.solana.md`](aces/ledger.solana.md) | ❌ designed / not started |
 
 ## Layout
 

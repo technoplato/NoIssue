@@ -5,6 +5,13 @@
   "description": "ACES event-sourced engine. This version field is the source of truth for the event schema (see version.js).",
   "main": "core.js",
   "scripts": {
-    "test": "node core.test.js && node net.test.js && node conversation.test.js && node version.test.js && node platform.test.js && node view.test.js && node parse.test.js && node nav.test.js && node ledger.test.js && node assistant.test.js"
+    "test": "node core.test.js && node net.test.js && node conversation.test.js && node version.test.js && node platform.test.js && node view.test.js && node parse.test.js && node nav.test.js && node ledger.test.js && node assistant.test.js && node pay.test.js",
+    "test:pear": "node pear.live.test.js",
+    "test:all": "npm test && npm run test:pear"
+  },
+  "comment:deps": "hypercore/hyperswarm are OPTIONAL — only pear.live.js needs them; the core suite runs on plain node with zero installs. `npm run test:pear` after `npm install` proves real replication.",
+  "optionalDependencies": {
+    "hypercore": "^11.33.5",
+    "hyperswarm": "^4.17.0"
   }
 }

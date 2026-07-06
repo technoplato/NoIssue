@@ -84,9 +84,9 @@ across 10 suites.
 | **Event versioning** (`version.js`) | enforced SemVer, migrations | ✅ **Works** | every arcade event tagged `v1.0` |
 | **The arcade** (browser UI) | real engine, unbundled, event tape, replay | 🟡 **Built, not deployed** | see "Deployment" below |
 | **InstantDB sync** | live cloud sync adapter | ⚠️ **Adapter ready, NOT wired live** | see below |
-| **Pear / Holepunch P2P** | peer-to-peer sync | ❌ **Shape only, not live** | see below |
-| **Money / payments** | Stripe / Solana / x402 | ❌ **None real yet** | see below |
-| **Solana contract** | on-chain ledger | ❌ **Designed, not written** | see below |
+| **Pear / Holepunch P2P** | peer-to-peer sync | ⚠️ **Real hypercore replication proven; DHT discovery needs a UDP host** | `aces/pear.live.js` |
+| **Stripe payments** | buy game tokens | ⚠️ **Integration built + tested with doubles; needs a live key + server** | `aces/pay.js`, `aces/pay.stripe.md` |
+| **Solana contract** | on-chain ledger | ❌ **Designed, not written** | `aces/ledger.solana.md` |
 
 Legend: ✅ works & proven · 🟡 in progress ·
 ⚠️ partial / caveated · ❌ not yet.
@@ -108,23 +108,41 @@ trick" (a local HTML page + the agent reading it
 back via the admin SDK) did work, from Node.
 
 **Is Pear (Holepunch) actually live?**
-No. `pear.js` implements the `{publish,
-subscribe}` **shape** so `multisync` can treat it
-like any other backend, but it is not wired to a
-real hypercore + hyperswarm. It lazy-requires the
-Holepunch deps and has never touched a live swarm.
-It is a documented seam, not a running peer.
+Partly, and this is new. `pear.live.js` now wires
+the **real** Holepunch stack, not just a shape:
+two nodes replicate events over genuine
+**hypercore** (append-only signed logs), proven
+in `pear.live.test.js` (4/4) — a fact published on
+one node arrives on another by real replication,
+no mock. The **hyperswarm/DHT discovery** half is
+real code too, but needs a **UDP-capable host**
+(node/bun on a real network); this sandbox blocks
+UDP, so peer *discovery* wasn't exercised here —
+the replication was, over a stream pair (exactly
+what a swarm connection carries). So: replication
+is live and proven; automatic peer-finding runs on
+Michael's machine, not in CI.
 
 **Is there any money support?**
-No real money moves anywhere. The token
-**ledger** (`ledger.js`) is a fully working
-event-sourced ledger with mechanical fairness
-laws (no unbacked mints, conservation, no
-negatives, genesis-humility), and it correctly
+Now there's a real integration path, though no
+live charge has run. `pay.js` models payments the
+ACES way — a charge is a **side-effect** behind a
+swappable `pay` **dependency**; a *verified*
+Stripe webhook re-enters the **ledger** as a
+`RecordPurchase`, minting tokens ($5 → 50,000 at
+100 tokens/cent). Proven end-to-end in
+`pay.test.js` (10/10) against a scripted double:
+paid webhooks mint, forged signatures are
+rejected, double-spends refused twice over. Going
+live needs a Stripe secret key + a small server +
+a webhook endpoint — all documented in
+[`aces/pay.stripe.md`](aces/pay.stripe.md). No key
+is in the repo. The underlying **ledger**
+(`ledger.js`) is still in-memory and enforces the
+fairness laws (no unbacked mints, conservation, no
+negatives, genesis-humility); it correctly
 computes the $14.28 Shopify seed → 142,800 tokens.
-But it is **in-memory only** — no Stripe, no
-Solana, no x402 (Cloudflare HTTP-402) is
-connected. Tokens are ledger units, not money.
+Solana and x402 rails are not connected.
 
 **Is the Solana contract ready?**
 No. There is a complete **design document**
