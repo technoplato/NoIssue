@@ -1,0 +1,408 @@
+<!doctype html>
+<!-- ============================================
+  ACES ARCADE — the engine, in a browser.
+
+  There is NO build step and NO bundle. This
+  page fetches the very same CommonJS modules
+  that `node test.js` runs (core.js,
+  calculator.js, store.js, platform.js,
+  version.js ...) and wires them with a tiny
+  require() shim below. The site you are on
+  serves its own source: view-source is the
+  real program.
+
+  Isomorphism, demonstrated:
+  - same decide/evolve/react as the CLI
+  - the 'speak' EFFECT runs on the browser's
+    TTS (Text To Speech) processor here, and
+    on a different processor on a server —
+    the logic never knows the difference.
+  - REPLAY drops state and refolds the log,
+    live, because state is only a cache.
+============================================= -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport"
+  content="width=device-width, initial-scale=1">
+<title>ACES Arcade</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --ink: #33ff66; --dim: #1a8c3c;
+    --bg: #050b07; --panel: #08130c;
+    --hot: #aaffc3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg);
+    color: var(--ink);
+    font-family: "SFMono-Regular", Menlo,
+      Consolas, monospace;
+    font-size: 15px; line-height: 1.35;
+  }
+  /* CRT scanlines + vignette */
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(0deg,
+        rgba(0,0,0,.16) 0 1px,
+        transparent 1px 3px);
+  }
+  header {
+    padding: 14px 18px 6px;
+    display: flex; gap: 12px;
+    align-items: baseline; flex-wrap: wrap;
+  }
+  h1 { margin: 0; font-size: 20px;
+    letter-spacing: 3px;
+    text-shadow: 0 0 8px var(--dim); }
+  .chip { color: var(--hot);
+    border: 1px solid var(--dim);
+    padding: 1px 8px; border-radius: 10px;
+    font-size: 12px; }
+  nav { padding: 6px 18px; display: flex;
+    gap: 8px; flex-wrap: wrap; }
+  nav button, .pad button, .act {
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--dim);
+    border-radius: 6px;
+    font: inherit; padding: 8px 14px;
+    min-height: 44px; cursor: pointer;
+  }
+  nav button[aria-selected="true"] {
+    color: var(--bg); background: var(--ink);
+    font-weight: 700;
+  }
+  main {
+    display: grid; gap: 16px;
+    grid-template-columns: minmax(0,1fr)
+      minmax(0,1fr);
+    padding: 12px 18px 40px;
+  }
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; }
+  }
+  section, aside {
+    background: var(--panel);
+    border: 1px solid var(--dim);
+    border-radius: 8px; padding: 14px;
+    min-width: 0;
+  }
+  pre {
+    margin: 0 0 12px; overflow-x: auto;
+    text-shadow: 0 0 6px rgba(51,255,102,.35);
+  }
+  .pad { display: grid; gap: 8px;
+    grid-template-columns: repeat(4, 1fr);
+    max-width: 340px; }
+  .pad button:active,
+  .act:active { background: var(--ink);
+    color: var(--bg); }
+  .acts { display: flex; gap: 8px;
+    flex-wrap: wrap; margin-top: 10px; }
+  aside h2, section h2 {
+    margin: 0 0 10px; font-size: 13px;
+    color: var(--hot); letter-spacing: 2px; }
+  #tape { max-height: 420px; overflow-y: auto;
+    font-size: 12px; color: var(--dim); }
+  #tape .v { color: var(--ink); }
+  #toast { position: fixed; left: 50%;
+    bottom: 24px; transform: translateX(-50%);
+    background: var(--ink); color: var(--bg);
+    padding: 10px 16px; border-radius: 8px;
+    opacity: 0; transition: opacity .3s;
+    max-width: 90vw; }
+  footer { padding: 0 18px 30px;
+    color: var(--dim); font-size: 12px; }
+  a { color: var(--hot); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ACES ARCADE</h1>
+  <span class="chip" id="ver">v…</span>
+  <span class="chip" id="planet">…</span>
+</header>
+<nav id="tabs" role="tablist"></nav>
+<main>
+  <section>
+    <pre id="screen">booting…</pre>
+    <div id="controls"></div>
+  </section>
+  <aside>
+    <h2>EVENT TAPE — the log is truth</h2>
+    <div class="acts">
+      <button class="act" id="replay">
+        ⟲ drop state + replay log</button>
+    </div>
+    <pre id="tape"></pre>
+  </aside>
+</main>
+<footer>
+  Every keypress becomes a fact; state is a
+  fold of the tape. Source (unbundled, this
+  site serves it):
+  <a href="core.js">core.js</a> ·
+  <a href="calculator.js">calculator.js</a> ·
+  <a href="store.js">store.js</a> ·
+  <a href="version.js">version.js</a> ·
+  <a href="platform.js">platform.js</a> ·
+  <a href="https://github.com/technoplato/NoIssue">repo</a>
+</footer>
+<div id="toast" role="status"></div>
+
+<script>
+'use strict';
+
+/* -- a require() the size of a haiku ---------
+ * Fetch every module's source, then evaluate
+ * lazily, memoized, exactly like node would.
+ */
+const SRC = {}, CACHE = {};
+function req(path) {
+  const n = path.replace(/^\.\//, '');
+  if (CACHE[n]) return CACHE[n].exports;
+  const m = CACHE[n] = { exports: {} };
+  new Function(
+    'module', 'exports', 'require',
+    SRC[n])(m, m.exports, req);
+  return m.exports;
+}
+
+const $ = id => document.getElementById(id);
+function toast(text) {
+  const t = $('toast');
+  t.textContent = text;
+  t.style.opacity = 1;
+  clearTimeout(toast.tid);
+  toast.tid = setTimeout(
+    () => t.style.opacity = 0, 2600);
+}
+
+async function boot() {
+  const mods = ['core', 'calculator', 'ui',
+    'store', 'store-ui', 'platform',
+    'version', 'view'];
+  await Promise.all(mods.map(async n => {
+    const r = await fetch(n + '.js');
+    SRC[n] = await r.text();
+  }));
+  const pkg = await (
+    await fetch('package.json')).json();
+
+  const { createRuntime } = req('core');
+  const { versioned, defineSchema } =
+    req('version');
+  const platform = req('platform');
+
+  // one schema, straight from package.json —
+  // the single source of truth, in production.
+  const schema =
+    defineSchema({ version: pkg.version });
+  $('ver').textContent =
+    'v' + pkg.version + ' · schema ' +
+    schema.tag;
+  $('planet').textContent =
+    platform.detect() + ' → ' +
+    platform.recommend().use;
+
+  /* -- effect PROCESSORS for THIS planet ------
+   * The archetypes ask; the browser answers.
+   * Swap these for server processors and the
+   * same machines run there untouched.
+   */
+  const procs = {
+    speak: async fx => {
+      if ('speechSynthesis' in window)
+        speechSynthesis.speak(
+          new SpeechSynthesisUtterance(
+            fx.text));
+      return [];
+    },
+    notify: async fx => {
+      toast(fx.text);
+      return [];
+    },
+  };
+
+  const calc = createRuntime(
+    versioned(req('calculator').machine,
+      schema),
+    { processors: procs, nodeId: 'web' });
+  const store = createRuntime(
+    versioned(req('store').machine, schema),
+    { processors: procs, nodeId: 'web' });
+
+  // -- the event tape -----------------------
+  const tape = $('tape');
+  function tapeLine(who, e) {
+    const meta = { ...e };
+    delete meta._seq; delete meta._at;
+    delete meta._id; delete meta._origin;
+    const div =
+      document.createElement('div');
+    div.innerHTML =
+      '[' + who + '] <span class="v">' +
+      (e.v || '·') + '</span> ';
+    div.append(JSON.stringify(meta));
+    tape.prepend(div);
+    while (tape.childNodes.length > 200)
+      tape.lastChild.remove();
+  }
+  calc.subscribe(m => {
+    if (m.t === 'event')
+      tapeLine('calc', m.e);
+    render();
+  });
+  store.subscribe(m => {
+    if (m.t === 'event')
+      tapeLine('store', m.e);
+    render();
+  });
+
+  // -- tabs ---------------------------------
+  const KEYS = [
+    ['7', '8', '9', '/'],
+    ['4', '5', '6', '*'],
+    ['1', '2', '3', '-'],
+    ['0', '.', '=', '+'],
+    ['(', ')', '^', 'C'],
+    ['<'],
+  ];
+  const SKUS = ['APL', 'MLK', 'EGG', 'BRD'];
+  const key = k =>
+    calc.dispatch({ type: 'KEY', key: k });
+
+  const TABS = {
+    calc: {
+      screen: () => calc.render(),
+      controls() {
+        const pad =
+          document.createElement('div');
+        pad.className = 'pad';
+        for (const row of KEYS)
+          for (const k of row) {
+            const b = document
+              .createElement('button');
+            b.textContent =
+              k === '<' ? '< back' : k;
+            b.onclick = () => key(k);
+            pad.append(b);
+          }
+        return pad;
+      },
+    },
+    store: {
+      screen: () => store.render(),
+      controls() {
+        const w =
+          document.createElement('div');
+        const mk = (label, action) => {
+          const b = document
+            .createElement('button');
+          b.className = 'act';
+          b.textContent = label;
+          b.onclick = () =>
+            store.dispatch(action);
+          return b;
+        };
+        const r1 =
+          document.createElement('div');
+        r1.className = 'acts';
+        const r2 =
+          document.createElement('div');
+        r2.className = 'acts';
+        for (const s of SKUS) {
+          r1.append(mk('+ ' + s,
+            { type: 'AddToCart', sku: s }));
+          r2.append(mk('− ' + s,
+            { type: 'RemoveFromCart',
+              sku: s }));
+        }
+        const r3 =
+          document.createElement('div');
+        r3.className = 'acts';
+        r3.append(mk('CHECKOUT ✓',
+          { type: 'Checkout' }));
+        w.append(r1, r2, r3);
+        return w;
+      },
+    },
+    platform: {
+      screen: () =>
+        platform.report() + '\n\n' +
+        'recommend() → ' + JSON.stringify(
+          platform.recommend(), null, 2) +
+        '\n\nthe closed enum (' +
+        platform.leaves().length +
+        ' leaves):\n  ' +
+        platform.leaves().join('\n  '),
+      controls: () =>
+        document.createElement('div'),
+    },
+  };
+  let active = 'calc';
+
+  const nav = $('tabs');
+  for (const name of Object.keys(TABS)) {
+    const b =
+      document.createElement('button');
+    b.textContent = name.toUpperCase();
+    b.setAttribute('role', 'tab');
+    b.onclick = () => {
+      active = name;
+      mount(); render();
+    };
+    b.dataset.tab = name;
+    nav.append(b);
+  }
+  function mount() {
+    for (const b of nav.children)
+      b.setAttribute('aria-selected',
+        b.dataset.tab === active);
+    const c = $('controls');
+    c.replaceChildren(
+      TABS[active].controls());
+  }
+  function render() {
+    $('screen').textContent =
+      TABS[active].screen();
+  }
+
+  // -- keyboard drives the calculator -------
+  addEventListener('keydown', ev => {
+    if (active !== 'calc') return;
+    const k = ev.key;
+    const map = {
+      Enter: '=', Backspace: '<',
+      Escape: 'C', c: 'C',
+    };
+    if (map[k]) { key(map[k]); return; }
+    if ('0123456789.+-*/^()='
+        .includes(k) && k) key(k);
+  });
+
+  // -- replay: state is only a cache --------
+  $('replay').onclick = () => {
+    const n = calc.getLog().length +
+      store.getLog().length;
+    calc.replay(calc.getLog());
+    store.replay(store.getLog());
+    render();
+    toast('rebuilt state from ' + n +
+      ' facts — same answer, always');
+  };
+
+  mount(); render();
+}
+
+boot().catch(e => {
+  $('screen').textContent =
+    'BOOT FAILURE\n' + e.stack;
+});
+</script>
+</body>
+</html>
