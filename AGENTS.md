@@ -8,6 +8,16 @@ first thing a new agent should read. For the
 [`aces/NEXT.md`](aces/NEXT.md); for the *spec*,
 [`aces/SPEC.md`](aces/SPEC.md).
 
+## Contents
+
+1. [The coordination protocol
+   (TCP-style)](#1-the-coordination-protocol-tcp-style)
+2. [House rules (conventions)](#2-house-rules-conventions)
+3. [Skills & module map](#3-skills--module-map)
+4. [Current state & next steps](#4-current-state--next-steps)
+5. [Effects vs. dependencies (say it
+   precisely)](#5-effects-vs-dependencies-say-it-precisely)
+
 ---
 
 ## 1. The coordination protocol (TCP-style)
@@ -128,9 +138,40 @@ Run the whole proof suite: `cd aces && npm test`
 ## 4. Current state & next steps
 
 Summarized in [`SUMMARY.md`](SUMMARY.md). The
-short version: the engine and archetypes work and
-are deployed to GitHub Pages; **InstantDB and
-Pear are not live**, **no real money moves yet**,
-and **the Solana contract is designed but not
-written**. Roadmap order in
-[`aces/NEXT.md`](aces/NEXT.md).
+short version: the engine and archetypes work;
+**the arcade is not yet deployed and must not
+land on `main` without Michael's explicit
+say-so**; **InstantDB and Pear are not live**,
+**no real money moves yet**, and **the Solana
+contract is designed but not written**. Roadmap
+order in [`aces/NEXT.md`](aces/NEXT.md).
+
+---
+
+## 5. Effects vs. dependencies (say it precisely)
+
+A house distinction worth stating exactly,
+because it is the spine of the whole design:
+
+- A **side-effect** is an act on the outside
+  world — persist to storage, publish over the
+  network, render a screen, **charge a card**.
+  `react` only *names* the effect; it never does
+  it.
+- A **dependency** is the swappable thing that
+  *performs* the effect: a processor with
+  `live` / `test` / `unimplemented` faces
+  (`deps.js`). Swapping the dependency is what
+  moves the same pure logic between browser,
+  server, and test.
+- Every effect's result **re-enters as an
+  event**, so the log remains the whole story.
+
+**Dependencies cause the side-effects.** Do not
+call storage/network/screen/payments
+"dependencies" — they are *categories of
+side-effect*, each performed by a dependency you
+inject. (Payments is the newest: a Stripe charge
+is an effect behind a `pay` dependency; its
+confirmation re-enters the ledger as a
+`RecordPurchase` fact.)

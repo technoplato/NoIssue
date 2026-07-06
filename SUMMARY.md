@@ -6,6 +6,18 @@ designed, and what is next. Written to be
 honest: the "Status" column below does not
 round up.
 
+## Contents
+
+- [What ACES is](#what-aces-is)
+- [Effects vs. dependencies (the precise
+  language)](#effects-vs-dependencies-the-precise-language)
+- [The honest status table](#the-honest-status-table)
+- [Direct answers to the questions asked](#direct-answers-to-the-questions-asked)
+- [Deployment](#deployment)
+- [Next steps](#next-steps)
+- [How two agents built this in
+  parallel](#how-two-agents-built-this-in-parallel)
+
 ---
 
 ## What ACES is
@@ -15,12 +27,40 @@ round up.
 engine where the business logic is three pure
 functions — `decide` (judge an action → facts),
 `evolve` (fold facts → state), `react` (ask for
-I/O) — and everything else (storage, network,
-screen, payments) is a swappable dependency
-around them. **The log is truth; state is a
-cache** you can drop and rebuild by replaying
-the log. Refusals are facts too (`Rejected`),
-never silent drops.
+side-effects) — wrapped by swappable
+**dependencies** that actually perform those
+effects. **The log is truth; state is a cache**
+you can drop and rebuild by replaying the log.
+Refusals are facts too (`Rejected`), never
+silent drops.
+
+## Effects vs. dependencies (the precise language)
+
+An earlier draft called "storage, network,
+screen, payments" *dependencies*. That blurred
+two different things — here is the sharp version:
+
+- A **side-effect** is an *act on the outside
+  world*: persist to storage, publish over the
+  network, render to a screen, **charge a card**.
+  `react(state, event)` only ever *names* the
+  effect it wants; it never performs it.
+- A **dependency** is the *swappable thing that
+  performs* that effect — a **processor** with
+  three faces (`live` / `test` / `unimplemented`,
+  see `deps.js`). The dependency is what you
+  swap to move the same logic between a browser,
+  a server, and a test.
+- The result of an effect **re-enters as an
+  event**, so the log stays the whole story.
+
+So: **dependencies cause the side-effects.**
+Storage/network/screen/payments are *categories
+of effect*; each is carried out by a dependency
+you inject. Payments is the newest one — a Stripe
+charge is a side-effect behind a `pay` dependency,
+and its confirmation re-enters the ledger as a
+`RecordPurchase` fact.
 
 Everything lives under [`aces/`](aces/) and runs
 on plain Node with no dependencies:
@@ -42,7 +82,7 @@ across 10 suites.
 | **Parser-printers** (`parse.js`) | one spec parses *and* prints | ✅ **Works** | tests only (used by nav) |
 | **Platform enum** (`platform.js`) | declarative runtime tree | ✅ **Works** | arcade → PLATFORM |
 | **Event versioning** (`version.js`) | enforced SemVer, migrations | ✅ **Works** | every arcade event tagged `v1.0` |
-| **The arcade** (browser UI) | real engine, unbundled, event tape, replay | 🟡 **Deploying** | see "Deployment" below |
+| **The arcade** (browser UI) | real engine, unbundled, event tape, replay | 🟡 **Built, not deployed** | see "Deployment" below |
 | **InstantDB sync** | live cloud sync adapter | ⚠️ **Adapter ready, NOT wired live** | see below |
 | **Pear / Holepunch P2P** | peer-to-peer sync | ❌ **Shape only, not live** | see below |
 | **Money / payments** | Stripe / Solana / x402 | ❌ **None real yet** | see below |
@@ -102,21 +142,31 @@ the toolchain.
 
 ## Deployment
 
+**The arcade is not live yet, and the ACES work
+is deliberately kept OFF `main`** (Michael's
+call — do not merge to main without his explicit
+say-so). What that means concretely:
+
 - **Root site** — `https://technoplato.github.io/NoIssue/`
-  — **live** (currently the landing page linking
-  to the arcade and the archived hackathon app).
+  — still the old Jekyll render of the hackathon
+  README; unchanged.
 - **The arcade** — `https://technoplato.github.io/NoIssue/aces/`
-  — goes live when this work lands on **`main`**.
-  The GitHub Pages *environment* only permits
-  deploys from `main`; the two earlier deploy runs
-  from the feature branch were correctly blocked by
-  that policy. Merging to main clears the gate.
-- **Offline / CSP'd hosts** — a single self-
-  contained file,
+  — **not deployed.** GitHub Pages' `github-pages`
+  environment only permits deploys from `main`, so
+  the deploy workflow cannot publish from the
+  feature branch. A brief merge-to-main was made
+  and then reverted (main is back at its prior
+  commit); the deploy never actually succeeded, so
+  nothing was ever served. Re-deploying is a
+  decision for Michael: either allow the feature
+  branch in the Pages environment settings, or
+  merge to main when he's ready.
+- **Offline / CSP'd hosts (works today)** — a
+  single self-contained file,
   [`aces/deploy/aces-arcade-standalone.html`](aces/deploy/aces-arcade-standalone.html),
   inlines every module (built by
-  `node aces/deploy/build-artifact.js`). Works
-  from `file://` with no server.
+  `node aces/deploy/build-artifact.js`). Open it
+  from `file://` — no server, no deploy needed.
 
 The deploy workflow
 (`.github/workflows/deploy-aces-pages.yml`) runs
