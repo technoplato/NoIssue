@@ -1,5 +1,31 @@
 # NoIssue
 
+<!-- ============================================ -->
+## In Progress Work
+
+_Active build on branch `claude/human-ai-detection-game-9q4nnb`.
+The ACES engine (Action · Command · Event · Side-effect · State) lives
+under [`aces/`](./aces). Full context in
+[`aces/HANDOFF.md`](./aces/HANDOFF.md)._
+
+| when (UTC) | status | item |
+|---|---|---|
+| 2026-07-06 | done | Event-sourced core: `decide`/`evolve`/`react`, append-only log, `replay`, remote `ingest` |
+| 2026-07-06 | done | Archetypes with proofs: **calculator**, **store**, **conversation** (the human/AI stacking game) |
+| 2026-07-06 | done | Sync layer: InstantDB-shaped + Pear/Holepunch, `multisync` (per-backend timeouts, dedup) |
+| 2026-07-06 | done | Controlled deps (`unimplemented` crashes tests), platform diagnostic, World/URI addressing |
+| 2026-07-06 | done | Live InstantDB app provisioned; cross-device write→read proven end to end |
+| 2026-07-06 | done | In-browser apps (Claude artifacts): CRT **calculator**, **“Swipe the Human”** game (+ InstantDB-synced standalone build) |
+| 2026-07-06 | done | Modular `dev.sh` (`up`/`run`/`test`/`db`) — self-hosts InstantDB on `:8888` |
+| 2026-07-06 | done | `aces/flake.nix` reproducible Nix dev shell (`nix develop`), grounded in Kun Chen's L8 Nix video |
+| 2026-07-06 | wip  | `web/uri-graph.html` (screen/URI directed graph) — layout renders 0 nodes, bug to fix |
+| 2026-07-06 | next | hermetic agent runner · x402 store checkout · live Pear swarm · event versioning + SemVer build gate |
+
+> Web apps are currently published as private Claude artifacts and mirrored as
+> standalone files; their source can be committed under `aces/web/` on request.
+
+<!-- ============================================ -->
+
 ## Overview
 
 NoIssue is an innovative front-end component designed to streamline the development workflow for programmers who don't have the luxury of a dual-monitor setup or just want to keep their dev-admin work close to their normal workflow. This tool seamlessly integrates with your GitHub repositories, providing a comprehensive view of all issues and enabling developers to interact with them directly through the front-end interface. It is especially handy for developers who need to keep an eye on their GitHub repositories while actively working on other applications.
