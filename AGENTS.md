@@ -84,6 +84,13 @@ opens, so continuity survives across sessions.
 
 ## 2. House rules (conventions)
 
+The full style — the width rule verbatim, code
+formatting, comment placement and voice, with
+examples — is the **`narrow` skill**:
+[`.claude/skills/narrow/SKILL.md`](.claude/skills/narrow/SKILL.md).
+It applies to ALL files: source, docs, tests.
+The short version:
+
 - **≤ ~50 columns** per source line (they fit
   Michael's phone preview). 2-space indent. Deep
   nesting is a smell — flatten or extract.
